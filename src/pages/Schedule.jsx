@@ -1,7 +1,8 @@
 // src/pages/Schedule.jsx
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import api from '../lib/api'
+import Modal from '../components/Modal'
 
 /**
  * Минималистичная страница “Зоны и Плейлисты”
@@ -18,9 +19,46 @@ const ls = {
 }
 const uid = () => Math.random().toString(36).slice(2,9)
 
+const fallbackDevices = [
+  { ip: '192.168.0.21', name: 'Холл · Ресивер' },
+  { ip: '192.168.0.37', name: 'Кафе · Колонки' },
+  { ip: '192.168.0.52', name: 'Терраса · Усилитель' },
+]
+
+function createDemoPlaylists(){
+  return [
+    {
+      id: uid(),
+      name: 'Утренний эфир',
+      tracks: [
+        { id: uid(), name: 'Opening Intro.mp3' },
+        { id: uid(), name: 'Morning Jazz Loop.wav' },
+        { id: uid(), name: 'Daily Announcements.mp3' },
+      ],
+    },
+    {
+      id: uid(),
+      name: 'Дневное настроение',
+      tracks: [
+        { id: uid(), name: 'Chill Lounge 01.mp3' },
+        { id: uid(), name: 'Citywalk Groove.mp3' },
+        { id: uid(), name: 'Acoustic Breeze.flac' },
+      ],
+    },
+    {
+      id: uid(),
+      name: 'Вечерняя витрина',
+      tracks: [
+        { id: uid(), name: 'Ambient Bloom.mp3' },
+        { id: uid(), name: 'Night Lights.wav' },
+      ],
+    },
+  ]
+}
+
 export default function Schedule(){
   // устройства из сети
-  const [devices, setDevices] = useState([])
+  const [devices, setDevices] = useState(fallbackDevices)
   // зоны: [{id,name,deviceIp,playlistIds:[]}]
   const [zones, setZones] = useState(()=> ls.get('sk_zones', [
     { id:'z1', name:'Вход', deviceIp:'', playlistIds:[] },
@@ -28,40 +66,74 @@ export default function Schedule(){
     { id:'z3', name:'Озеро', deviceIp:'', playlistIds:[] },
   ]))
   // плейлисты: [{id,name,tracks:[{id,name}]}]
-  const [lists, setLists] = useState(()=> ls.get('sk_playlists', []))
+  const [lists, setLists] = useState(()=> {
+    const stored = ls.get('sk_playlists', [])
+    if (Array.isArray(stored) && stored.length) return stored
+    return createDemoPlaylists()
+  })
 
-  useEffect(()=>{ (async()=>{
-    try{ const res = await api.scan(); setDevices(Array.isArray(res)?res:[]) }catch{}
-  })() },[])
+  const [dialog, setDialog] = useState({ mode: null, id: null })
+  const [dialogValue, setDialogValue] = useState('')
+  const [dialogError, setDialogError] = useState('')
+
+  const activeZone = useMemo(() => zones.find(z => z.id === dialog.id), [zones, dialog])
+  const activeList = useMemo(() => lists.find(l => l.id === dialog.id), [lists, dialog])
+
+  const dialogTitle = useMemo(() => {
+    switch(dialog.mode){
+      case 'createZone': return 'Новая зона'
+      case 'renameZone': return 'Переименовать зону'
+      case 'deleteZone': return 'Удалить зону'
+      case 'createList': return 'Новый плейлист'
+      case 'renameList': return 'Переименовать плейлист'
+      case 'deleteList': return 'Удалить плейлист'
+      default: return ''
+    }
+  }, [dialog.mode])
+
+  function closeDialog(){
+    setDialog({ mode: null, id: null })
+    setDialogValue('')
+    setDialogError('')
+  }
+
+  async function scanDevices(){
+    try{
+      const res = await api.scan()
+      if(Array.isArray(res) && res.length){
+        setDevices(res)
+      }else{
+        setDevices(fallbackDevices)
+      }
+    }catch{
+      setDevices(fallbackDevices)
+    }
+  }
+
+  useEffect(()=>{ scanDevices() },[])
   useEffect(()=> ls.set('sk_zones', zones), [zones])
   useEffect(()=> ls.set('sk_playlists', lists), [lists])
 
-  function createZone(){
-    const n = prompt('Название зоны?')?.trim(); if(!n) return
-    setZones(z => [...z, { id:uid(), name:n, deviceIp:'', playlistIds:[] }])
+  function createZoneWithName(name){
+    setZones(z => [...z, { id:uid(), name, deviceIp:'', playlistIds:[] }])
   }
-  function renameZone(id){
-    const n = prompt('Новое название зоны?')?.trim(); if(!n) return
-    setZones(z => z.map(x => x.id===id? {...x, name:n}:x))
+  function renameZoneWithName(id, name){
+    setZones(z => z.map(x => x.id===id? {...x, name}:x))
   }
   function deleteZone(id){
-    if(!confirm('Удалить зону?')) return
     setZones(z => z.filter(x => x.id!==id))
   }
   function setZoneDevice(zoneId, ip){
     setZones(z => z.map(x => x.id===zoneId? {...x, deviceIp:ip}:x))
   }
 
-  function createList(){
-    const n = prompt('Название плейлиста?')?.trim(); if(!n) return
-    setLists(l => [...l, { id:uid(), name:n, tracks:[] }])
+  function createListWithName(name){
+    setLists(l => [...l, { id:uid(), name, tracks:[] }])
   }
-  function renameList(id){
-    const n = prompt('Новое название плейлиста?')?.trim(); if(!n) return
-    setLists(l => l.map(x => x.id===id? {...x, name:n}:x))
+  function renameListWithName(id, name){
+    setLists(l => l.map(x => x.id===id? {...x, name}:x))
   }
   function deleteList(id){
-    if(!confirm('Удалить плейлист?')) return
     setLists(l => l.filter(x => x.id!==id))
     setZones(z => z.map(x => ({...x, playlistIds:x.playlistIds.filter(p=>p!==id)})))
   }
@@ -77,6 +149,7 @@ export default function Schedule(){
     e.dataTransfer.effectAllowed = 'move'
   }
   function onDropToZone(e, zoneId){
+    e.preventDefault()
     const data = e.dataTransfer.getData('application/x-sk')
     if(!data) return
     const payload = JSON.parse(data)
@@ -91,6 +164,49 @@ export default function Schedule(){
     setZones(z => z.map(x => x.id===zoneId? {...x, playlistIds:x.playlistIds.filter(id=>id!==listId)}:x))
   }
 
+  function openDialog(mode, id = null, value = ''){
+    setDialog({ mode, id })
+    setDialogValue(value)
+    setDialogError('')
+  }
+
+  function handleDialogSubmit(e){
+    if(e?.preventDefault) e.preventDefault()
+    const value = dialogValue.trim()
+
+    if(['createZone','renameZone','createList','renameList'].includes(dialog.mode)){
+      if(!value){
+        setDialogError('Введите название, чтобы сохранить изменения.')
+        return
+      }
+    }
+
+    switch(dialog.mode){
+      case 'createZone':
+        createZoneWithName(value)
+        break
+      case 'renameZone':
+        if(dialog.id) renameZoneWithName(dialog.id, value)
+        break
+      case 'createList':
+        createListWithName(value)
+        break
+      case 'renameList':
+        if(dialog.id) renameListWithName(dialog.id, value)
+        break
+      case 'deleteZone':
+        if(dialog.id) deleteZone(dialog.id)
+        break
+      case 'deleteList':
+        if(dialog.id) deleteList(dialog.id)
+        break
+      default:
+        break
+    }
+
+    closeDialog()
+  }
+
   return (
     <div className="max-w-7xl mx-auto p-4 space-y-6">
       {/* ======= ЗОНЫ ======= */}
@@ -98,8 +214,8 @@ export default function Schedule(){
         title="Зоны"
         subtitle="Карточки зон. Выберите устройство и перетащите на них плейлисты."
         actions={<>
-          <button className="btn" onClick={createZone}>+ Зона</button>
-          <button className="btn" onClick={async()=>{ try{ const r=await api.scan(); setDevices(Array.isArray(r)?r:[]) }catch{} }}>Сканировать устройства</button>
+          <button className="btn" onClick={()=>openDialog('createZone')}>+ Зона</button>
+          <button className="btn" onClick={scanDevices}>Сканировать устройства</button>
         </>}
       />
 
@@ -111,8 +227,8 @@ export default function Schedule(){
             devices={devices}
             lists={lists}
             setDevice={setZoneDevice}
-            onRename={()=>renameZone(z.id)}
-            onDelete={()=>deleteZone(z.id)}
+            onRename={()=>openDialog('renameZone', z.id, z.name)}
+            onDelete={()=>openDialog('deleteZone', z.id)}
             onUnassign={(listId)=>unassign(z.id, listId)}
             onDrop={(e)=>onDropToZone(e, z.id)}
           />
@@ -123,7 +239,7 @@ export default function Schedule(){
       <SectionHeader
         title="Плейлисты"
         subtitle="Прямоугольные карточки. Перетаскивайте на зоны выше."
-        actions={<button className="btn" onClick={createList}>+ Плейлист</button>}
+        actions={<button className="btn" onClick={()=>openDialog('createList')}>+ Плейлист</button>}
       />
 
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
@@ -132,8 +248,8 @@ export default function Schedule(){
             <PlaylistCard
               key={pl.id}
               pl={pl}
-              onRename={()=>renameList(pl.id)}
-              onDelete={()=>deleteList(pl.id)}
+              onRename={()=>openDialog('renameList', pl.id, pl.name)}
+              onDelete={()=>openDialog('deleteList', pl.id)}
               onDragStart={(e)=>onDragStartPlaylist(e, pl.id)}
               onAddFiles={(files)=>addFilesToList(pl.id, files)}
             />
@@ -145,6 +261,52 @@ export default function Schedule(){
           )}
         </AnimatePresence>
       </div>
+
+      <Modal open={!!dialog.mode} onClose={closeDialog} title={dialogTitle}>
+        {dialog.mode && (
+          <div className="space-y-4">
+            {['createZone','renameZone','createList','renameList'].includes(dialog.mode) && (
+              <form className="space-y-4" onSubmit={handleDialogSubmit}>
+                <div className="space-y-2">
+                  <label className="text-sm text-white/70 block">
+                    {dialog.mode.includes('Zone') ? 'Название зоны' : 'Название плейлиста'}
+                  </label>
+                  <input
+                    autoFocus
+                    className="w-full bg-white/10 border border-white/15 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-white/40"
+                    placeholder={dialog.mode.includes('Zone') ? 'Например, Лобби' : 'Например, Фоновая музыка'}
+                    value={dialogValue}
+                    onChange={(e)=>{ setDialogValue(e.target.value); setDialogError('') }}
+                  />
+                  {dialogError && <div className="text-xs text-rose-300">{dialogError}</div>}
+                </div>
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button type="button" className="btn glass" onClick={closeDialog}>Отмена</button>
+                  <button type="submit" className="btn">Сохранить</button>
+                </div>
+              </form>
+            )}
+
+            {['deleteZone','deleteList'].includes(dialog.mode) && (
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <div className="text-sm text-white/80">
+                    Вы уверены, что хотите удалить {dialog.mode==='deleteZone' ? 'зону' : 'плейлист'}
+                    {' '}«{dialog.mode==='deleteZone' ? activeZone?.name : activeList?.name}»?
+                  </div>
+                  {dialog.mode==='deleteList' && (
+                    <div className="text-xs text-white/60">Она будет отвязана от всех зон.</div>
+                  )}
+                </div>
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button type="button" className="btn glass" onClick={closeDialog}>Отмена</button>
+                  <button type="button" className="btn bg-rose-500/40" onClick={handleDialogSubmit}>Удалить</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }
@@ -180,7 +342,7 @@ function ZoneCard({ z, devices, lists, setDevice, onRename, onDelete, onUnassign
       className={`${panelClass} p-4`}
       onDragOver={(e)=>{e.preventDefault(); setOver(true)}}
       onDragLeave={()=>setOver(false)}
-      onDrop={(e)=>{ setOver(false); onDrop(e) }}
+      onDrop={(e)=>{ e.preventDefault(); setOver(false); onDrop(e) }}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
