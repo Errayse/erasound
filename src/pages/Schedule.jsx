@@ -63,6 +63,43 @@ function createDemoPlaylists(){
   ]
 }
 
+const fallbackDevices = [
+  { ip: '192.168.0.21', name: 'Холл · Ресивер' },
+  { ip: '192.168.0.37', name: 'Кафе · Колонки' },
+  { ip: '192.168.0.52', name: 'Терраса · Усилитель' },
+]
+
+function createDemoPlaylists(){
+  return [
+    {
+      id: uid(),
+      name: 'Утренний эфир',
+      tracks: [
+        { id: uid(), name: 'Opening Intro.mp3' },
+        { id: uid(), name: 'Morning Jazz Loop.wav' },
+        { id: uid(), name: 'Daily Announcements.mp3' },
+      ],
+    },
+    {
+      id: uid(),
+      name: 'Дневное настроение',
+      tracks: [
+        { id: uid(), name: 'Chill Lounge 01.mp3' },
+        { id: uid(), name: 'Citywalk Groove.mp3' },
+        { id: uid(), name: 'Acoustic Breeze.flac' },
+      ],
+    },
+    {
+      id: uid(),
+      name: 'Вечерняя витрина',
+      tracks: [
+        { id: uid(), name: 'Ambient Bloom.mp3' },
+        { id: uid(), name: 'Night Lights.wav' },
+      ],
+    },
+  ]
+}
+
 export default function Schedule(){
   // устройства из сети
   const [devices, setDevices] = useState(fallbackDevices)
