@@ -1722,7 +1722,7 @@ function ZoneCard({
   )
 }
 
-function formatClockTime(seconds){
+function formatClockLabel(seconds){
   if (seconds == null || Number.isNaN(seconds) || seconds < 0) return '--:--'
   const total = Math.round(seconds)
   const m = Math.floor(total / 60)
@@ -1822,8 +1822,8 @@ function ZonePlayerFooter({ player, progressPercent, elapsedSeconds, trackLength
               />
             </div>
             <div className="flex justify-between text-[11px] text-white/40">
-              <span>{formatClockTime(elapsedSeconds)}</span>
-              <span>{formatClockTime(trackLength)}</span>
+              <span>{formatClockLabel(elapsedSeconds)}</span>
+              <span>{formatClockLabel(trackLength)}</span>
             </div>
           </div>
         </div>
