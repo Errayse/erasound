@@ -10,7 +10,7 @@ import { motion } from 'framer-motion'
  * - единый стиль для всего приложения
  */
 
-const TABS = ['Панель','Карта','Контент','Группы','Расписание','Настройки']
+const TABS = ['Обзор','Сеть','Медиа','Зоны','Расписание','Параметры']
 
 export default function TopNav({ tab, setTab }) {
   const wrapRef = useRef(null)
@@ -42,8 +42,8 @@ export default function TopNav({ tab, setTab }) {
             <div className="w-4 h-4 rounded-md bg-white/70" />
           </div>
           <div className="leading-tight">
-            <div className="font-semibold tracking-wide">SoundKeeper</div>
-            <div className="text-xs text-white/50">Network Audio Control</div>
+            <div className="font-semibold tracking-wide">EraSound Center</div>
+            <div className="text-xs text-white/50">Adaptive Audio Orchestration</div>
           </div>
         </div>
 
