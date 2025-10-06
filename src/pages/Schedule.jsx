@@ -1,283 +1,676 @@
-// src/pages/Schedule.jsx
-import React, { useEffect, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import api from '../lib/api'
+import { DAY_GROUPS } from '../features/planner/constants'
+import {
+  plannerStorage as ls,
+  transferKey,
+  uid,
+  timeToMinutes,
+} from '../features/planner/utils'
+import {
+  scheduleFallbackDevices,
+  createDefaultZones,
+  createDefaultWindow,
+  createDefaultAnnouncement,
+  createDemoPlaylists,
+} from '../features/planner/seeds'
+import {
+  normalizeScheduleDevices,
+  normalizeZone,
+  normalizeWindow,
+  normalizeAnnouncement,
+  cloneWindowData,
+  cloneAnnouncementData,
+} from '../features/planner/normalizers'
+import ZoneCard from '../features/planner/components/ZoneCard'
+import PlaylistCard from '../features/planner/components/PlaylistCard'
+import PlannerDialog from '../features/planner/components/PlannerDialog'
+import { SectionHeader } from '../features/planner/components/primitives'
 
-/**
- * Минималистичная страница “Зоны и Плейлисты”
- * - Две независимые секции: Зоны (с выбором устройства) и Плейлисты
- * - Прямоугольные карточки, логичное разделение, адаптив
- * - Drag&Drop: перетащи плейлист на зону, чтобы привязать
- * - Несколько плейлистов в зоне, отвязка одним кликом
- * - Сохранение состояния в localStorage
- */
-
-const ls = {
-  get(k, d){ try{ const v = localStorage.getItem(k); return v?JSON.parse(v):d }catch{ return d } },
-  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)) }catch{} }
-}
-const uid = () => Math.random().toString(36).slice(2,9)
+const defaultZones = createDefaultZones()
 
 export default function Schedule(){
-  // устройства из сети
-  const [devices, setDevices] = useState([])
-  // зоны: [{id,name,deviceIp,playlistIds:[]}]
-  const [zones, setZones] = useState(()=> ls.get('sk_zones', [
-    { id:'z1', name:'Вход', deviceIp:'', playlistIds:[] },
-    { id:'z2', name:'Кафе', deviceIp:'', playlistIds:[] },
-    { id:'z3', name:'Озеро', deviceIp:'', playlistIds:[] },
-  ]))
-  // плейлисты: [{id,name,tracks:[{id,name}]}]
-  const [lists, setLists] = useState(()=> ls.get('sk_playlists', []))
+  const [devices, setDevices] = useState(scheduleFallbackDevices)
 
-  useEffect(()=>{ (async()=>{
-    try{ const res = await api.scan(); setDevices(Array.isArray(res)?res:[]) }catch{}
-  })() },[])
-  useEffect(()=> ls.set('sk_zones', zones), [zones])
-  useEffect(()=> ls.set('sk_playlists', lists), [lists])
+  const [zones, setZones] = useState(() => {
+    const stored = ls.get('sk_zones', defaultZones)
+    const source = Array.isArray(stored) && stored.length ? stored : defaultZones
+    return source.map((zone, idx) => normalizeZone(zone, defaultZones[idx], idx))
+  })
 
-  function createZone(){
-    const n = prompt('Название зоны?')?.trim(); if(!n) return
-    setZones(z => [...z, { id:uid(), name:n, deviceIp:'', playlistIds:[] }])
-  }
-  function renameZone(id){
-    const n = prompt('Новое название зоны?')?.trim(); if(!n) return
-    setZones(z => z.map(x => x.id===id? {...x, name:n}:x))
-  }
-  function deleteZone(id){
-    if(!confirm('Удалить зону?')) return
-    setZones(z => z.filter(x => x.id!==id))
-  }
-  function setZoneDevice(zoneId, ip){
-    setZones(z => z.map(x => x.id===zoneId? {...x, deviceIp:ip}:x))
+  const [lists, setLists] = useState(() => {
+    const stored = ls.get('sk_playlists', [])
+    if (Array.isArray(stored) && stored.length) return stored
+    return createDemoPlaylists()
+  })
+
+  const [transfers, setTransfers] = useState(() => ls.get('sk_transfers', {}))
+  const transferTimers = useRef({})
+
+  const [dialog, setDialog] = useState({ mode: null, id: null, zoneId: null, targetId: null })
+  const [dialogValue, setDialogValue] = useState('')
+  const [dialogError, setDialogError] = useState('')
+  const [dialogData, setDialogData] = useState(null)
+
+  const activeZone = useMemo(() => {
+    const zoneId = dialog.zoneId || dialog.id
+    return zones.find(z => z.id === zoneId) || null
+  }, [zones, dialog])
+
+  const activeList = useMemo(() => lists.find(l => l.id === dialog.id), [lists, dialog])
+
+  const activeWindow = useMemo(() => {
+    if (!activeZone) return null
+    return activeZone.playbackWindows.find(w => w.id === dialog.targetId) || null
+  }, [activeZone, dialog.targetId])
+
+  const activeAnnouncement = useMemo(() => {
+    if (!activeZone) return null
+    return activeZone.announcements.find(a => a.id === dialog.targetId) || null
+  }, [activeZone, dialog.targetId])
+
+  const allTracks = useMemo(() => (
+    lists.flatMap(list =>
+      (list.tracks || []).map(track => ({
+        listId: list.id,
+        trackId: track.id,
+        label: `${track.name} • ${list.name}`,
+      }))
+    )
+  ), [lists])
+
+  const dialogTitle = useMemo(() => {
+    switch(dialog.mode){
+      case 'createZone': return 'Новая зона'
+      case 'renameZone': return 'Переименовать зону'
+      case 'deleteZone': return 'Удалить зону'
+      case 'createList': return 'Новый плейлист'
+      case 'renameList': return 'Переименовать плейлист'
+      case 'deleteList': return 'Удалить плейлист'
+      case 'addWindow': return 'Временное окно'
+      case 'editWindow': return 'Настройки окна'
+      case 'deleteWindow': return 'Удалить временное окно'
+      case 'addAnnouncement': return 'Новое включение'
+      case 'editAnnouncement': return 'Настройки включения'
+      case 'deleteAnnouncement': return 'Удалить включение'
+      default: return ''
+    }
+  }, [dialog.mode])
+
+  useEffect(() => { scanDevices() }, [])
+  useEffect(() => ls.set('sk_zones', zones), [zones])
+  useEffect(() => ls.set('sk_playlists', lists), [lists])
+  useEffect(() => ls.set('sk_transfers', transfers), [transfers])
+
+  useEffect(() => {
+    const validKeys = new Set()
+    zones.forEach(zone => {
+      zone.playlistIds.forEach(listId => {
+        zone.deviceIps.forEach(ip => {
+          if (!ip) return
+          validKeys.add(transferKey(zone.id, listId, ip))
+        })
+      })
+    })
+
+    setTransfers(prev => {
+      let changed = false
+      const next = {}
+
+      validKeys.forEach(key => {
+        if (prev[key]) {
+          next[key] = prev[key]
+        } else {
+          next[key] = { status: 'pending', progress: 0 }
+          changed = true
+        }
+      })
+
+      Object.keys(prev).forEach(key => {
+        if (!validKeys.has(key)) {
+          changed = true
+        }
+      })
+
+      if (!changed && Object.keys(prev).length === validKeys.size) {
+        return prev
+      }
+
+      return next
+    })
+  }, [zones])
+
+  useEffect(() => {
+    Object.entries(transfers).forEach(([key, entry]) => {
+      if (entry.status === 'pending' && !transferTimers.current[key]) {
+        transferTimers.current[key] = setInterval(() => {
+          setTransfers(prev => {
+            const current = prev[key]
+            if (!current || current.status !== 'pending') return prev
+            const increment = 10 + Math.random() * 18
+            const nextProgress = Math.min(100, current.progress + increment)
+            const done = nextProgress >= 100
+            return {
+              ...prev,
+              [key]: {
+                status: done ? 'success' : 'pending',
+                progress: nextProgress,
+              },
+            }
+          })
+        }, 1200)
+      }
+
+      if (entry.status === 'success' && transferTimers.current[key]) {
+        clearInterval(transferTimers.current[key])
+        delete transferTimers.current[key]
+      }
+    })
+  }, [transfers])
+
+  useEffect(() => () => {
+    Object.values(transferTimers.current).forEach(timer => clearInterval(timer))
+  }, [])
+
+  async function scanDevices(){
+    try{
+      const res = await api.scan()
+      const normalized = normalizeScheduleDevices(res)
+      setDevices(Array.isArray(normalized) && normalized.length ? normalized : scheduleFallbackDevices)
+    }catch{
+      setDevices(scheduleFallbackDevices)
+    }
   }
 
-  function createList(){
-    const n = prompt('Название плейлиста?')?.trim(); if(!n) return
-    setLists(l => [...l, { id:uid(), name:n, tracks:[] }])
-  }
-  function renameList(id){
-    const n = prompt('Новое название плейлиста?')?.trim(); if(!n) return
-    setLists(l => l.map(x => x.id===id? {...x, name:n}:x))
-  }
-  function deleteList(id){
-    if(!confirm('Удалить плейлист?')) return
-    setLists(l => l.filter(x => x.id!==id))
-    setZones(z => z.map(x => ({...x, playlistIds:x.playlistIds.filter(p=>p!==id)})))
-  }
-  function addFilesToList(id, fileList){
-    const fs = Array.from(fileList||[])
-    if(!fs.length) return
-    setLists(l => l.map(x => x.id===id? {...x, tracks:[...x.tracks, ...fs.map(f=>({id:uid(), name:f.name}))]}:x))
-  }
-
-  // DnD: playlist -> zone
-  function onDragStartPlaylist(e, listId){
-    e.dataTransfer.setData('application/x-sk', JSON.stringify({type:'playlist', id:listId}))
-    e.dataTransfer.effectAllowed = 'move'
-  }
-  function onDropToZone(e, zoneId){
-    const data = e.dataTransfer.getData('application/x-sk')
-    if(!data) return
-    const payload = JSON.parse(data)
-    if(payload.type!=='playlist') return
-    setZones(z => z.map(x => {
-      if (x.id!==zoneId) return x
-      if (x.playlistIds.includes(payload.id)) return x
-      return {...x, playlistIds:[...x.playlistIds, payload.id]}
+  function toggleZoneDevice(zoneId, ip){
+    setZones(z => z.map(zone => {
+      if (zone.id !== zoneId) return zone
+      const set = new Set(zone.deviceIps)
+      if (set.has(ip)){
+        set.delete(ip)
+      }else{
+        set.add(ip)
+      }
+      return { ...zone, deviceIps: Array.from(set) }
     }))
   }
+
+  function removeZoneDevice(zoneId, ip){
+    setZones(z => z.map(zone => {
+      if (zone.id !== zoneId) return zone
+      return { ...zone, deviceIps: zone.deviceIps.filter(item => item !== ip) }
+    }))
+  }
+
+  function createZoneWithName(name){
+    const label = name || `Зона ${zones.length + 1}`
+    const id = uid()
+    setZones(z => [
+      ...z,
+      normalizeZone({
+        id,
+        name: label,
+        deviceIps: [],
+        playlistIds: [],
+        playbackWindows: [createDefaultWindow()],
+        announcements: [createDefaultAnnouncement()],
+      }, null, z.length),
+    ])
+  }
+
+  function renameZoneWithName(id, name){
+    setZones(z => z.map(zone => zone.id === id ? { ...zone, name } : zone))
+  }
+
+  function deleteZone(id){
+    setZones(z => z.filter(zone => zone.id !== id))
+  }
+
+  function createListWithName(name){
+    setLists(l => [...l, { id: uid(), name, tracks: [] }])
+  }
+
+  function renameListWithName(id, name){
+    setLists(l => l.map(list => list.id === id ? { ...list, name } : list))
+  }
+
+  function deleteList(id){
+    setLists(l => l.filter(list => list.id !== id))
+    setZones(z => z.map(zone => ({
+      ...zone,
+      playlistIds: zone.playlistIds.filter(listId => listId !== id),
+    })))
+  }
+
+  function addFilesToList(id, fileList){
+    if (!fileList) return
+    const files = Array.from(fileList)
+    if (!files.length) return
+    setLists(l => l.map(list => {
+      if (list.id !== id) return list
+      return {
+        ...list,
+        tracks: [
+          ...list.tracks,
+          ...files.map(file => ({ id: uid(), name: file.name })),
+        ],
+      }
+    }))
+  }
+
+  function onDragStartPlaylist(e, id){
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('application/x-sk', JSON.stringify({ type: 'playlist', id }))
+  }
+
+  function onDropToZone(e, zoneId){
+    e.preventDefault()
+    const data = e.dataTransfer.getData('application/x-sk')
+    if (!data) return
+    const payload = JSON.parse(data)
+    if (payload.type !== 'playlist') return
+    setZones(z => z.map(zone => {
+      if (zone.id !== zoneId) return zone
+      if (zone.playlistIds.includes(payload.id)) return zone
+      return { ...zone, playlistIds: [...zone.playlistIds, payload.id] }
+    }))
+  }
+
   function unassign(zoneId, listId){
-    setZones(z => z.map(x => x.id===zoneId? {...x, playlistIds:x.playlistIds.filter(id=>id!==listId)}:x))
+    setZones(z => z.map(zone => zone.id === zoneId ? {
+      ...zone,
+      playlistIds: zone.playlistIds.filter(id => id !== listId),
+    } : zone))
+  }
+
+  function openDialog(mode, options = {}){
+    setDialog({
+      mode,
+      id: options.id ?? null,
+      zoneId: options.zoneId ?? null,
+      targetId: options.targetId ?? null,
+    })
+    setDialogValue(options.value ?? '')
+    setDialogError('')
+
+    if (['addWindow','editWindow'].includes(mode)){
+      const seed = options.data ? cloneWindowData(options.data) : cloneWindowData(createDefaultWindow())
+      setDialogData(seed)
+    }else if(['addAnnouncement','editAnnouncement'].includes(mode)){
+      const seed = options.data ? cloneAnnouncementData(options.data) : cloneAnnouncementData(createDefaultAnnouncement())
+      setDialogData(seed)
+    }else{
+      setDialogData(null)
+    }
+  }
+
+  function closeDialog(){
+    setDialog({ mode: null, id: null, zoneId: null, targetId: null })
+    setDialogValue('')
+    setDialogError('')
+    setDialogData(null)
+  }
+
+  function handleDialogSubmit(e){
+    if (e?.preventDefault) e.preventDefault()
+    const value = dialogValue.trim()
+
+    if (['createZone','renameZone','createList','renameList'].includes(dialog.mode)){
+      if (!value){
+        setDialogError('Введите название, чтобы сохранить изменения.')
+        return
+      }
+    }
+
+    switch(dialog.mode){
+      case 'createZone':
+        createZoneWithName(value)
+        break
+      case 'renameZone':
+        if (dialog.id) renameZoneWithName(dialog.id, value)
+        break
+      case 'createList':
+        createListWithName(value)
+        break
+      case 'renameList':
+        if (dialog.id) renameListWithName(dialog.id, value)
+        break
+      case 'deleteZone':
+        if (dialog.id) deleteZone(dialog.id)
+        break
+      case 'deleteList':
+        if (dialog.id) deleteList(dialog.id)
+        break
+      case 'deleteWindow':
+        if (dialog.zoneId && dialog.targetId) deletePlaybackWindow(dialog.zoneId, dialog.targetId)
+        break
+      case 'deleteAnnouncement':
+        if (dialog.zoneId && dialog.targetId) deleteAnnouncement(dialog.zoneId, dialog.targetId)
+        break
+      default:
+        break
+    }
+
+    closeDialog()
+  }
+
+  function toggleDialogDay(day){
+    setDialogData(data => {
+      if (!data) return data
+      const set = new Set(data.days || [])
+      if (set.has(day)){
+        set.delete(day)
+      }else{
+        set.add(day)
+      }
+      return { ...data, days: Array.from(set) }
+    })
+    setDialogError('')
+  }
+
+  function setDialogDays(days){
+    setDialogData(data => data ? { ...data, days: days.slice() } : data)
+    setDialogError('')
+  }
+
+  function addPlaybackWindow(zoneId, payload){
+    setZones(z => z.map(zone => zone.id === zoneId ? {
+      ...zone,
+      playbackWindows: [...zone.playbackWindows, normalizeWindow(payload)],
+    } : zone))
+  }
+
+  function updatePlaybackWindow(zoneId, windowId, payload){
+    setZones(z => z.map(zone => zone.id === zoneId ? {
+      ...zone,
+      playbackWindows: zone.playbackWindows.map(window => window.id === windowId ? normalizeWindow({ ...window, ...payload, id: window.id }) : window),
+    } : zone))
+  }
+
+  function deletePlaybackWindow(zoneId, windowId){
+    setZones(z => z.map(zone => zone.id === zoneId ? {
+      ...zone,
+      playbackWindows: zone.playbackWindows.filter(window => window.id !== windowId),
+    } : zone))
+  }
+
+  function togglePlaybackWindow(zoneId, windowId){
+    setZones(z => z.map(zone => zone.id === zoneId ? {
+      ...zone,
+      playbackWindows: zone.playbackWindows.map(window => window.id === windowId ? { ...window, enabled: !window.enabled } : window),
+    } : zone))
+  }
+
+  function addAnnouncement(zoneId, payload){
+    setZones(z => z.map(zone => zone.id === zoneId ? {
+      ...zone,
+      announcements: [...zone.announcements, normalizeAnnouncement(payload)],
+    } : zone))
+  }
+
+  function updateAnnouncement(zoneId, announcementId, payload){
+    setZones(z => z.map(zone => zone.id === zoneId ? {
+      ...zone,
+      announcements: zone.announcements.map(entry => entry.id === announcementId ? normalizeAnnouncement({ ...entry, ...payload, id: entry.id }) : entry),
+    } : zone))
+  }
+
+  function deleteAnnouncement(zoneId, announcementId){
+    setZones(z => z.map(zone => zone.id === zoneId ? {
+      ...zone,
+      announcements: zone.announcements.filter(entry => entry.id !== announcementId),
+    } : zone))
+  }
+
+  function toggleAnnouncement(zoneId, announcementId){
+    setZones(z => z.map(zone => zone.id === zoneId ? {
+      ...zone,
+      announcements: zone.announcements.map(entry => entry.id === announcementId ? { ...entry, enabled: !entry.enabled } : entry),
+    } : zone))
+  }
+
+  function handleWindowFormSubmit(e){
+    if (e?.preventDefault) e.preventDefault()
+    if (!dialogData) return
+    const label = (dialogData.label || '').trim()
+    const start = dialogData.start || '00:00'
+    const end = dialogData.end || '00:00'
+    const days = Array.isArray(dialogData.days) ? dialogData.days.filter(Boolean) : []
+
+    if (!label){
+      setDialogError('Введите название окна, чтобы сохранить изменения.')
+      return
+    }
+    if (!days.length){
+      setDialogError('Выберите хотя бы один день недели.')
+      return
+    }
+    if (timeToMinutes(end) <= timeToMinutes(start)){
+      setDialogError('Время окончания должно быть позже времени начала.')
+      return
+    }
+
+    const payload = {
+      ...dialogData,
+      label,
+      start,
+      end,
+      days,
+    }
+
+    if (dialog.mode === 'addWindow'){
+      addPlaybackWindow(dialog.zoneId, payload)
+    }else if(dialog.mode === 'editWindow'){
+      updatePlaybackWindow(dialog.zoneId, dialog.targetId, payload)
+    }
+
+    closeDialog()
+  }
+
+  function handleAnnouncementFormSubmit(e){
+    if (e?.preventDefault) e.preventDefault()
+    if (!dialogData) return
+
+    const title = (dialogData.title || '').trim()
+    if (!title){
+      setDialogError('Введите название включения.')
+      return
+    }
+
+    const repeat = dialogData.repeat || 'daily'
+    const base = { ...dialogData, title, repeat }
+
+    if (repeat === 'weekly'){
+      const days = Array.isArray(dialogData.days) ? dialogData.days.filter(Boolean) : []
+      if (!days.length){
+        setDialogError('Выберите дни недели для запуска.')
+        return
+      }
+      base.days = days
+    }else if(repeat === 'daily'){
+      base.days = DAY_GROUPS.all
+    }else{
+      base.days = Array.isArray(dialogData.days) ? dialogData.days.filter(Boolean) : []
+    }
+
+    if (repeat === 'hourly'){
+      const offset = Math.max(0, Math.min(59, Number(dialogData.offsetMinutes) || 0))
+      base.offsetMinutes = offset
+      base.time = dialogData.time || '00:00'
+    }else{
+      if (!dialogData.time){
+        setDialogError('Укажите время запуска объявления.')
+        return
+      }
+      base.time = dialogData.time
+      base.offsetMinutes = dialogData.offsetMinutes ?? 0
+    }
+
+    if (dialogData.track?.type === 'library'){
+      if (!dialogData.track.listId || !dialogData.track.trackId){
+        setDialogError('Выберите трек из библиотеки или переключитесь на собственный файл.')
+        return
+      }
+      base.track = {
+        type: 'library',
+        listId: dialogData.track.listId,
+        trackId: dialogData.track.trackId,
+      }
+    }else{
+      const name = (dialogData.track?.name || '').trim()
+      if (!name){
+        setDialogError('Введите название или файл объявления.')
+        return
+      }
+      base.track = { type: 'custom', name }
+    }
+
+    if (dialog.mode === 'addAnnouncement'){
+      addAnnouncement(dialog.zoneId, base)
+    }else if(dialog.mode === 'editAnnouncement'){
+      updateAnnouncement(dialog.zoneId, dialog.targetId, base)
+    }
+
+    closeDialog()
+  }
+
+  function handleZonePlayerAction(zoneId, action){
+    setZones(z => z.map(zone => {
+      if (zone.id !== zoneId) return zone
+      const playlistId = zone.playlistIds[0]
+      const list = lists.find(l => l.id === playlistId)
+      const tracks = list?.tracks || []
+      const nextTrack = tracks[Math.floor(Math.random() * tracks.length)]
+      const base = zone.player || {}
+
+      switch(action){
+        case 'play':
+          return {
+            ...zone,
+            player: {
+              ...base,
+              isPlaying: true,
+              progress: 0.05 + Math.random() * 0.4,
+              track: nextTrack?.name || base.track || 'Demo Track',
+              playlist: list?.name || base.playlist,
+              artist: base.artist || 'EraSound Studio',
+              length: nextTrack ? 240 + Math.random() * 120 : base.length || 240,
+            },
+          }
+        case 'stop':
+          return {
+            ...zone,
+            player: {
+              ...base,
+              isPlaying: false,
+            },
+          }
+        case 'prev':
+        case 'next':
+          return {
+            ...zone,
+            player: {
+              ...base,
+              isPlaying: true,
+              progress: 0.02,
+              track: nextTrack?.name || base.track || 'Demo Track',
+              playlist: list?.name || base.playlist,
+            },
+          }
+        default:
+          return zone
+      }
+    }))
   }
 
   return (
     <div className="max-w-7xl mx-auto p-4 space-y-6">
-      {/* ======= ЗОНЫ ======= */}
       <SectionHeader
         title="Зоны"
-        subtitle="Карточки зон. Выберите устройство и перетащите на них плейлисты."
-        actions={<>
-          <button className="btn" onClick={createZone}>+ Зона</button>
-          <button className="btn" onClick={async()=>{ try{ const r=await api.scan(); setDevices(Array.isArray(r)?r:[]) }catch{} }}>Сканировать устройства</button>
-        </>}
+        subtitle="Связывайте несколько устройств с зоной и отслеживайте прогресс загрузки плейлистов."
+        actions={(
+          <>
+            <button className="btn" onClick={() => openDialog('createZone')}>+ Зона</button>
+            <button className="btn" onClick={scanDevices}>Сканировать устройства</button>
+          </>
+        )}
       />
 
       <div className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
-        {zones.map(z=>(
+        {zones.map(zone => (
           <ZoneCard
-            key={z.id}
-            z={z}
+            key={zone.id}
+            z={zone}
             devices={devices}
             lists={lists}
-            setDevice={setZoneDevice}
-            onRename={()=>renameZone(z.id)}
-            onDelete={()=>deleteZone(z.id)}
-            onUnassign={(listId)=>unassign(z.id, listId)}
-            onDrop={(e)=>onDropToZone(e, z.id)}
+            transfers={transfers}
+            onToggleDevice={ip => toggleZoneDevice(zone.id, ip)}
+            onRemoveDevice={ip => removeZoneDevice(zone.id, ip)}
+            onRename={() => openDialog('renameZone', { id: zone.id, value: zone.name })}
+            onDelete={() => openDialog('deleteZone', { id: zone.id })}
+            onUnassign={listId => unassign(zone.id, listId)}
+            onDrop={event => onDropToZone(event, zone.id)}
+            onAddWindow={() => openDialog('addWindow', { zoneId: zone.id, data: createDefaultWindow() })}
+            onEditWindow={window => openDialog('editWindow', { zoneId: zone.id, targetId: window.id, data: window })}
+            onDeleteWindow={window => openDialog('deleteWindow', { zoneId: zone.id, targetId: window.id })}
+            onToggleWindow={windowId => togglePlaybackWindow(zone.id, windowId)}
+            onAddAnnouncement={() => openDialog('addAnnouncement', { zoneId: zone.id, data: createDefaultAnnouncement() })}
+            onEditAnnouncement={entry => openDialog('editAnnouncement', { zoneId: zone.id, targetId: entry.id, data: entry })}
+            onDeleteAnnouncement={entry => openDialog('deleteAnnouncement', { zoneId: zone.id, targetId: entry.id })}
+            onToggleAnnouncement={announcementId => toggleAnnouncement(zone.id, announcementId)}
+            onPlayerAction={action => handleZonePlayerAction(zone.id, action)}
           />
         ))}
       </div>
 
-      {/* ======= ПЛЕЙЛИСТЫ ======= */}
       <SectionHeader
         title="Плейлисты"
-        subtitle="Прямоугольные карточки. Перетаскивайте на зоны выше."
-        actions={<button className="btn" onClick={createList}>+ Плейлист</button>}
+        subtitle="Готовые подборки для витрины — перетащите на нужную зону или загрузите новые треки."
+        actions={<button className="btn" onClick={() => openDialog('createList')}>+ Плейлист</button>}
       />
 
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         <AnimatePresence>
-          {lists.map(pl=>(
+          {lists.map(list => (
             <PlaylistCard
-              key={pl.id}
-              pl={pl}
-              onRename={()=>renameList(pl.id)}
-              onDelete={()=>deleteList(pl.id)}
-              onDragStart={(e)=>onDragStartPlaylist(e, pl.id)}
-              onAddFiles={(files)=>addFilesToList(pl.id, files)}
+              key={list.id}
+              pl={list}
+              onRename={() => openDialog('renameList', { id: list.id, value: list.name })}
+              onDelete={() => openDialog('deleteList', { id: list.id })}
+              onDragStart={event => onDragStartPlaylist(event, list.id)}
+              onAddFiles={files => addFilesToList(list.id, files)}
             />
           ))}
-          {lists.length===0 && (
-            <motion.div className="panel p-6 text-white/60" initial={{opacity:0}} animate={{opacity:1}}>
+          {lists.length === 0 && (
+            <motion.div className="panel p-6 text-white/60" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
               Плейлистов нет. Создайте первый.
             </motion.div>
           )}
         </AnimatePresence>
       </div>
+
+      <PlannerDialog
+        dialog={dialog}
+        dialogTitle={dialogTitle}
+        dialogValue={dialogValue}
+        dialogData={dialogData}
+        dialogError={dialogError}
+        onClose={closeDialog}
+        onSubmit={handleDialogSubmit}
+        onWindowSubmit={handleWindowFormSubmit}
+        onAnnouncementSubmit={handleAnnouncementFormSubmit}
+        setDialogValue={setDialogValue}
+        setDialogData={setDialogData}
+        setDialogError={setDialogError}
+        toggleDialogDay={toggleDialogDay}
+        setDialogDays={setDialogDays}
+        allTracks={allTracks}
+        activeZone={activeZone}
+        activeList={activeList}
+        activeWindow={activeWindow}
+        activeAnnouncement={activeAnnouncement}
+      />
     </div>
-  )
-}
-
-/* ======================= UI PRIMITIVES ======================= */
-
-function SectionHeader({title, subtitle, actions}){
-  return (
-    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-      <div>
-        <h2 className="text-xl font-semibold">{title}</h2>
-        <div className="text-sm text-white/60">{subtitle}</div>
-      </div>
-      <div className="flex gap-2">{actions}</div>
-      {/* минимализм: тонкая линия-разделитель */}
-      <div className="w-full h-px bg-white/10 md:hidden" />
-    </div>
-  )
-}
-
-// Прямоугольная “панель”: минимум скругления, строгая сетка
-const panelClass = 'panel bg-white/5 border border-white/10 rounded-lg shadow-glass'
-
-/* ======================= ZONE CARD ======================= */
-
-function ZoneCard({ z, devices, lists, setDevice, onRename, onDelete, onUnassign, onDrop }){
-  const assigned = z.playlistIds.map(id=>lists.find(l=>l.id===id)).filter(Boolean)
-  const [over, setOver] = useState(false)
-
-  return (
-    <motion.div
-      layout
-      className={`${panelClass} p-4`}
-      onDragOver={(e)=>{e.preventDefault(); setOver(true)}}
-      onDragLeave={()=>setOver(false)}
-      onDrop={(e)=>{ setOver(false); onDrop(e) }}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="font-medium truncate">{z.name}</div>
-          <div className="text-xs text-white/60">Плейлистов: {assigned.length}</div>
-        </div>
-        <div className="flex gap-1">
-          <button className="btn" onClick={onRename}>✎</button>
-          <button className="btn" onClick={onDelete}>🗑</button>
-        </div>
-      </div>
-
-      <div className="mt-3 flex items-center gap-2">
-        <span className="text-xs text-white/60">Устройство</span>
-        <select
-          className="bg-white/5 border border-white/10 rounded-md px-2 py-1 text-sm"
-          value={z.deviceIp}
-          onChange={(e)=>setDevice(z.id, e.target.value)}
-        >
-          <option value="">—</option>
-          {devices.map(d=>(
-            <option key={d.ip} value={d.ip}>{d.name || d.ip} · {d.ip}</option>
-          ))}
-        </select>
-      </div>
-
-      <div className={`mt-3 p-3 border rounded-md ${over? 'border-white/30 bg-white/5' : 'border-white/10'}`}>
-        <div className="text-xs text-white/60 mb-2">Плейлисты зоны</div>
-        <div className="grid gap-2">
-          {assigned.length===0 && <div className="text-white/50 text-sm">Перетащите плейлист сюда</div>}
-          {assigned.map(pl=>(
-            <div key={pl.id} className="bg-white/5 border border-white/10 rounded-md px-3 py-2 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-white/40" />
-              <div className="truncate">{pl.name}</div>
-              <div className="text-xs text-white/50 ml-auto">{pl.tracks.length} трек(ов)</div>
-              <button className="btn ml-2" onClick={()=>onUnassign(pl.id)}>Убрать</button>
-            </div>
-          ))}
-        </div>
-      </div>
-    </motion.div>
-  )
-}
-
-/* ======================= PLAYLIST CARD ======================= */
-
-function PlaylistCard({ pl, onRename, onDelete, onDragStart, onAddFiles }){
-  const [dragOver, setDragOver] = useState(false)
-
-  function onDropFiles(e){
-    e.preventDefault(); setDragOver(false)
-    const files = e.dataTransfer.files
-    if (files?.length) onAddFiles(files)
-  }
-
-  return (
-    <motion.div
-      layout
-      className={`${panelClass} p-4`}
-      draggable
-      onDragStart={onDragStart}
-      onDragOver={(e)=>{e.preventDefault(); setDragOver(true)}}
-      onDragLeave={()=>setDragOver(false)}
-      onDrop={onDropFiles}
-      title="Перетащите карточку на зону; файлы — внутрь карточки"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="font-medium truncate">{pl.name}</div>
-          <div className="text-xs text-white/60">{pl.tracks.length} трек(ов)</div>
-        </div>
-        <div className="flex gap-1">
-          <button className="btn" onClick={onRename}>✎</button>
-          <button className="btn" onClick={onDelete}>🗑</button>
-        </div>
-      </div>
-
-      <div className={`mt-3 p-3 border rounded-md ${dragOver? 'border-white/30 bg-white/5' : 'border-white/10'}`}>
-        {pl.tracks.length===0 && (
-          <div className="text-white/60 text-sm">Перетащите файлы сюда или выберите ниже</div>
-        )}
-        <div className="grid gap-2 max-h-36 overflow-auto pr-1">
-          {pl.tracks.map(t=>(
-            <div key={t.id} className="bg-white/5 border border-white/10 rounded-md px-3 py-2 truncate text-sm">
-              {t.name}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="mt-3 flex justify-between items-center">
-        <label className="btn cursor-pointer">
-          + Файлы
-          <input className="hidden" type="file" multiple onChange={(e)=>onAddFiles(e.target.files)} />
-        </label>
-        <div className="text-xs text-white/50">Перетащите карточку → зону</div>
-      </div>
-    </motion.div>
   )
 }
