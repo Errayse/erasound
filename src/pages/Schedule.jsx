@@ -2136,7 +2136,7 @@ function TransferSummary({ snapshot }){
           initial={{ width: 0 }}
           animate={{ width: `${snapshot.progress}%` }}
           transition={{ duration: 0.4 }}
-        />
+        ></motion.div>
       </div>
     </div>
   )
