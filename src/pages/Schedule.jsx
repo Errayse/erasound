@@ -1781,6 +1781,11 @@ function ZonePlayerFooter({ player, progressPercent, elapsedSeconds, trackLength
         <span>{isPlaying ? 'Сейчас в эфире' : 'Эфир приостановлен'}</span>
         {playlist && <span className="max-w-[60%] truncate text-right text-white/40">{playlist}</span>}
       </div>
+      <div className="text-lg font-semibold text-white">{value}</div>
+      {hint && <div className="text-xs text-white/40 truncate">{hint}</div>}
+    </div>
+  )
+}
 
       <div className="flex flex-col gap-3">
         <div className="flex items-start justify-between gap-3">
@@ -1822,6 +1827,95 @@ function ZonePlayerFooter({ player, progressPercent, elapsedSeconds, trackLength
             </div>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+function ToggleChip({ active, onClick, labelOn = 'Вкл', labelOff = 'Выкл' }){
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition-colors
+        ${active ? 'border-emerald-400/70 bg-emerald-400/10 text-emerald-200' : 'border-white/15 bg-white/5 text-white/60 hover:text-white'}`}
+    >
+      <span className={`h-2 w-2 rounded-full ${active ? 'bg-emerald-300' : 'bg-white/30'}`} />
+      {active ? labelOn : labelOff}
+    </button>
+  )
+}
+
+function ScheduleBadge({ children }){
+  return (
+    <span className="inline-flex items-center rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/60">
+      {children}
+    </span>
+  )
+}
+
+function formatClockTime(seconds){
+  if (seconds == null || Number.isNaN(seconds) || seconds < 0) return '--:--'
+  const total = Math.round(seconds)
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+function TabButton({ active, label, onClick, children }){
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 ${active ? 'bg-white/20 text-white shadow-glass' : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'}`}
+    >
+      {children}
+    </button>
+  )
+}
+
+function CircleIconButton({ icon, label, onClick, tone = 'neutral', size = 'md', variant = 'solid' }){
+  const sizeClass = size === 'sm' ? 'h-8 w-8 text-sm' : size === 'xs' ? 'h-7 w-7 text-xs' : 'h-9 w-9 text-base'
+  const palette = tone === 'danger'
+    ? 'text-rose-200 hover:text-rose-100 focus-visible:ring-rose-400/40'
+    : 'text-white/70 hover:text-white focus-visible:ring-white/30'
+  const background = variant === 'ghost'
+    ? 'bg-white/5 hover:bg-white/15'
+    : 'bg-white/10 hover:bg-white/20'
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={`flex items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-0 ${sizeClass} ${background} ${palette}`}
+    >
+      {icon}
+    </button>
+  )
+}
+
+function SummaryPill({ icon, label, value }){
+  return (
+    <div className="flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs text-white/60">
+      <span className="text-white/50" aria-hidden="true">{icon}</span>
+      <span className="font-semibold text-white">{value}</span>
+      <span className="text-white/40">{label}</span>
+    </div>
+  )
+}
+
+function DeviceDetailChip({ name, ip, status, onRemove }){
+  const color = status === 'offline' ? 'bg-rose-500' : status === 'warning' ? 'bg-amber-400' : 'bg-emerald-400'
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/70">
+      <span className={`h-2.5 w-2.5 rounded-full ${color}`} />
+      <div className="min-w-0">
+        <div className="truncate text-sm text-white/80">{name}</div>
+        <div className="text-[11px] text-white/40">{ip}</div>
       </div>
     </div>
   )
