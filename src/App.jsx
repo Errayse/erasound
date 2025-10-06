@@ -8,16 +8,16 @@ import Schedule from './pages/Schedule'
 import Settings from './pages/Settings'
 
 export default function App(){
-  const [tab, setTab] = useState('Панель')
+  const [tab, setTab] = useState('Обзор')
   return (
     <div className="min-h-screen">
       <TopNav tab={tab} setTab={setTab} />
-      {tab==='Панель' && <Dashboard />}
-      {tab==='Карта' && <Map />}
-      {tab==='Контент' && <Content />}
-      {tab==='Группы' && <Groups />}
+      {tab==='Обзор' && <Dashboard />}
+      {tab==='Сеть' && <Map />}
+      {tab==='Медиа' && <Content />}
+      {tab==='Зоны' && <Groups />}
       {tab==='Расписание' && <Schedule />}
-      {tab==='Настройки' && <Settings />}
+      {tab==='Параметры' && <Settings />}
     </div>
   )
 }
