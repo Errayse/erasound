@@ -1447,7 +1447,7 @@ function ZoneCard({
   const [over, setOver] = useState(false)
   const [activeTab, setActiveTab] = useState('overview')
 
-  const deviceCount = selectedDevices.length
+  const zoneDeviceCount = selectedDevices.length
   const playlistCount = assigned.length
   const windowCount = playbackWindows.length
   const activeWindowCount = playbackWindows.filter(win => win.enabled).length
@@ -1493,18 +1493,6 @@ function ZoneCard({
     onDrop(e)
   }
 
-  const deviceCount = selectedDevices.length
-  const playlistCount = assigned.length
-  const windowCount = playbackWindows.length
-  const activeWindowCount = playbackWindows.filter(win => win.enabled).length
-  const announcementCount = announcements.length
-  const activeAnnouncements = announcements.filter(item => item.enabled).length
-
-  const primaryAnnouncement = announcements.find(item => item.enabled) || announcements[0]
-  const nextAnnouncementLabel = primaryAnnouncement
-    ? describeAnnouncement(primaryAnnouncement)
-    : 'Не запланировано'
-
   return (
     <motion.div
       layout
@@ -1521,7 +1509,7 @@ function ZoneCard({
               <div className="text-lg font-semibold truncate">{z.name}</div>
             </div>
             <div className="flex gap-2">
-              <StatBubble label="Устройства" value={deviceCount} Icon={IconDeviceSmall} />
+              <StatBubble label="Устройства" value={zoneDeviceCount} Icon={IconDeviceSmall} />
               <StatBubble label="Плейлисты" value={playlistCount} Icon={IconPlaylistSmall} />
             </div>
           </div>
@@ -1529,9 +1517,9 @@ function ZoneCard({
             {selectedDevices.slice(0, 3).map(dev => (
               <DeviceStatusChip key={dev.ip} name={dev.name || dev.ip} status={resolveDeviceStatus(dev)} />
             ))}
-            {deviceCount > 3 && (
+            {zoneDeviceCount > 3 && (
               <span className="rounded-full bg-white/5 px-3 py-1 text-xs text-white/50">
-                + ещё {deviceCount - 3}
+                + ещё {zoneDeviceCount - 3}
               </span>
             )}
           </div>
