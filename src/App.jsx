@@ -7,7 +7,7 @@ import Schedule from './pages/Schedule'
 import Settings from './pages/Settings'
 
 export default function App(){
-  const [tab, setTab] = useState('Панель')
+  const [tab, setTab] = useState('Обзор')
   return (
     <div className="min-h-screen">
       <TopNav tab={tab} setTab={setTab} />
