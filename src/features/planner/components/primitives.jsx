@@ -6,6 +6,10 @@ import {
   IconDeviceSmall,
   IconPlaylistSmall,
   IconPlus,
+  IconPrev,
+  IconPlay,
+  IconStop,
+  IconNext,
 } from './icons'
 import { formatClockLabel } from '../../planner/utils'
 
