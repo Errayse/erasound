@@ -1819,7 +1819,7 @@ function ZonePlayerFooter({ player, progressPercent, elapsedSeconds, trackLength
                 initial={{ width: 0 }}
                 animate={{ width: `${progressValue}%` }}
                 transition={{ duration: 0.4 }}
-              />
+              ></motion.div>
             </div>
             <div className="flex justify-between text-[11px] text-white/40">
               <span>{formatClockTime(elapsedSeconds)}</span>
