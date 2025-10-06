@@ -1493,6 +1493,18 @@ function ZoneCard({
     onDrop(e)
   }
 
+  const deviceCount = selectedDevices.length
+  const playlistCount = assigned.length
+  const windowCount = playbackWindows.length
+  const activeWindowCount = playbackWindows.filter(win => win.enabled).length
+  const announcementCount = announcements.length
+  const activeAnnouncements = announcements.filter(item => item.enabled).length
+
+  const primaryAnnouncement = announcements.find(item => item.enabled) || announcements[0]
+  const nextAnnouncementLabel = primaryAnnouncement
+    ? describeAnnouncement(primaryAnnouncement)
+    : 'Не запланировано'
+
   return (
     <motion.div
       layout
