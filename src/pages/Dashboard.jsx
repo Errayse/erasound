@@ -2,6 +2,113 @@ import React, { useEffect, useMemo, useState } from 'react'
 import api from '../lib/api'
 import ZoneCard from '../components/ZoneCard'
 import Modal from '../components/Modal'
+import deviceIllustration from '../assets/era-device.svg'
+
+const fallbackDevices = [
+  {
+    ip: '192.168.0.21',
+    name: 'Холл · Ресивер',
+    zone: 'Холл',
+    online: true,
+    volume: 68,
+    speed: 95,
+    latency: 12,
+    uptime: '4 ч 12 мин',
+    nowPlaying: {
+      track: 'Morning Intro',
+      artist: 'EraSound Studio',
+      playlist: 'Утренний эфир',
+      progress: 0.42,
+      length: 210,
+    },
+  },
+  {
+    ip: '192.168.0.37',
+    name: 'Кафе · Колонки',
+    zone: 'Кафе',
+    online: true,
+    volume: 52,
+    speed: 82,
+    latency: 18,
+    uptime: '2 ч 05 мин',
+    nowPlaying: {
+      track: 'Coffee Lounge',
+      artist: 'LoFi Beats',
+      playlist: 'Дневное настроение',
+      progress: 0.63,
+      length: 254,
+    },
+  },
+  {
+    ip: '192.168.0.52',
+    name: 'Терраса · Усилитель',
+    zone: 'Терраса',
+    online: true,
+    volume: 74,
+    speed: 76,
+    latency: 22,
+    uptime: '56 мин',
+    nowPlaying: {
+      track: 'Sunset Chill',
+      artist: 'Skyline Trio',
+      playlist: 'Вечерняя витрина',
+      progress: 0.18,
+      length: 298,
+    },
+  },
+  {
+    ip: '192.168.0.88',
+    name: 'Склад · Шлюз',
+    zone: 'Склад',
+    online: false,
+    volume: 0,
+    speed: 0,
+    latency: null,
+    uptime: '—',
+    nowPlaying: null,
+  },
+]
+
+function normalizeDevices(list){
+  if (!Array.isArray(list) || list.length === 0) return []
+  return list.map((item, index) => {
+    const template = fallbackDevices[index % fallbackDevices.length]
+    const base = {
+      ...template,
+      ...item,
+    }
+    const fromResponse = item?.nowPlaying || item?.playback || null
+    const trackName = item?.track || item?.nowPlaying?.track || item?.currentTrack
+    const playlistName = item?.playlist || item?.nowPlaying?.playlist || template.nowPlaying?.playlist
+    const progress = item?.progress != null ? item.progress : item?.nowPlaying?.progress
+    base.online = item?.online != null ? !!item.online : template.online
+    base.speed = item?.speed ?? item?.bandwidth ?? template.speed
+    base.latency = item?.latency ?? template.latency
+    base.zone = item?.zone || item?.room || template.zone
+    base.volume = item?.volume != null ? item.volume : template.volume
+    base.uptime = item?.uptime || template.uptime
+    base.nowPlaying = fromResponse || (trackName ? {
+      track: trackName,
+      artist: item?.artist || template.nowPlaying?.artist || '—',
+      playlist: playlistName,
+      progress: typeof progress === 'number' ? progress : template.nowPlaying?.progress || 0,
+      length: item?.length || template.nowPlaying?.length || 240,
+    } : template.nowPlaying)
+    return base
+  })
+}
+
+function summarizeDevices(devices){
+  const total = devices.length
+  const onlineDevices = devices.filter(d => d.online)
+  const online = onlineDevices.length
+  const offline = total - online
+  const avgSpeed = online ? Math.round(onlineDevices.reduce((acc, d) => acc + (d.speed || 0), 0) / online) : 0
+  const latencyDevices = onlineDevices.filter(d => d.latency != null)
+  const avgLatency = latencyDevices.length ? Math.round(latencyDevices.reduce((acc, d) => acc + d.latency, 0) / latencyDevices.length) : 0
+  const activeStreams = onlineDevices.filter(d => !!d.nowPlaying).length
+  return { total, online, offline, avgSpeed, avgLatency, activeStreams }
+}
 
 const fallbackDevices = [
   {
@@ -169,12 +276,23 @@ export default function Dashboard(){
       <Modal open={!!active} onClose={()=>setActive(null)} title={`Устройство ${active?.name || active?.ip || ''}`}>
         {active && (
           <div className="space-y-6">
-            <div className="glass rounded-lg border border-white/10 p-4 space-y-3">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="text-lg font-semibold">{active.name || active.ip}</div>
-                  <div className="text-sm text-white/60">
-                    {active.zone ? `Зона: ${active.zone}` : 'Сетевой аудиоузел в сети'}
+            <div className="glass rounded-lg border border-white/10 p-4 space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-4">
+                  <div className="relative flex h-20 w-28 shrink-0 items-center justify-center">
+                    <div className="absolute inset-0 rounded-2xl bg-white/10 blur-md" aria-hidden />
+                    <img
+                      src={deviceIllustration}
+                      alt="Модуль EraSound"
+                      className="relative h-16 w-auto drop-shadow-[0_8px_18px_rgba(15,23,42,0.25)]"
+                      loading="lazy"
+                    />
+                  </div>
+                  <div>
+                    <div className="text-lg font-semibold">{active.name || active.ip}</div>
+                    <div className="text-sm text-white/60">
+                      {active.zone ? `Зона: ${active.zone}` : 'Сетевой аудиоузел в сети'}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">

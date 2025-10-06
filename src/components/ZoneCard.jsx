@@ -1,6 +1,8 @@
 import React from 'react'
 import { motion } from 'framer-motion'
 
+import deviceIllustration from '../assets/era-device.svg'
+
 const resolveProgress = (progress) => {
   if (progress == null || Number.isNaN(progress)) return 0
   if (progress > 1) return Math.min(100, Math.round(progress))
@@ -28,12 +30,25 @@ export default function ZoneCard({z, onPlay, onStop, onVolume, onOpen}){
       className="glass rounded-xl p-4 shadow-glass flex flex-col gap-4"
     >
       <div className="flex flex-col gap-4 min-w-0">
-        <div className="flex items-start gap-3">
-          <div className={`h-2.5 w-2.5 rounded-full ${z.online ? 'bg-emerald-400' : 'bg-rose-500'} mt-1.5`} />
-          <div className="min-w-0">
-            <div className="text-xs uppercase tracking-wide text-white/50">Устройство</div>
-            <div className="text-lg font-semibold truncate">{z.name || z.ip}</div>
-            <div className="text-sm text-white/60 truncate">{(z.zone || 'Без зоны')} · {z.ip || '—'}</div>
+        <div className="flex items-start gap-4">
+          <div className="relative flex h-20 w-28 shrink-0 items-center justify-center">
+            <div className="absolute inset-0 rounded-2xl bg-white/10 blur-md" aria-hidden />
+            <img
+              src={deviceIllustration}
+              alt="Модуль EraSound"
+              className="relative h-16 w-auto drop-shadow-[0_8px_18px_rgba(15,23,42,0.25)]"
+              loading="lazy"
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start gap-3">
+              <div className={`mt-1 h-2.5 w-2.5 rounded-full ${z.online ? 'bg-emerald-400' : 'bg-rose-500'}`} />
+              <div className="min-w-0 flex-1">
+                <div className="text-xs uppercase tracking-wide text-white/50">Устройство</div>
+                <div className="text-lg font-semibold truncate">{z.name || z.ip}</div>
+                <div className="text-sm text-white/60 truncate">{(z.zone || 'Без зоны')} · {z.ip || '—'}</div>
+              </div>
+            </div>
           </div>
           <span className={`ml-auto px-3 py-1 text-xs rounded-full ${statusClass}`}>
             {z.online ? 'Online' : 'Offline'}
