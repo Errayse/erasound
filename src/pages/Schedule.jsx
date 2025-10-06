@@ -36,10 +36,28 @@ const DAY_GROUPS = {
 }
 
 const scheduleFallbackDevices = [
-  { ip: '192.168.0.21', name: 'Холл · Ресивер' },
-  { ip: '192.168.0.37', name: 'Кафе · Колонки' },
-  { ip: '192.168.0.52', name: 'Терраса · Усилитель' },
+  { ip: '192.168.0.21', name: 'Холл · Ресивер', status: 'online' },
+  { ip: '192.168.0.37', name: 'Кафе · Колонки', status: 'degraded' },
+  { ip: '192.168.0.52', name: 'Терраса · Усилитель', status: 'offline' },
 ]
+
+function normalizeScheduleDevices(list){
+  if (!Array.isArray(list) || list.length === 0) return scheduleFallbackDevices
+  return list.map((device, index) => {
+    const fallback = scheduleFallbackDevices[index % scheduleFallbackDevices.length]
+    const base = {
+      ...fallback,
+      ...device,
+    }
+    const status = device?.status || (device?.online === false ? 'offline' : undefined)
+      || (device?.health && typeof device.health === 'string' ? device.health : undefined)
+      || (device?.latency && device.latency > 150 ? 'degraded' : undefined)
+    base.status = status || (device?.online === false ? 'offline' : 'online')
+    base.name = device?.name || device?.label || fallback.name
+    base.ip = device?.ip || fallback.ip
+    return base
+  })
+}
 
 function createDefaultWindow(){
   return {
@@ -63,6 +81,98 @@ function createDefaultAnnouncement(){
     offsetMinutes: 0,
     enabled: true,
   }
+}
+
+const demoPlayerPresets = [
+  {
+    track: 'Morning Intro',
+    playlist: 'Доброе утро',
+    artist: 'EraSound Studio',
+    progress: 0.28,
+    length: 214,
+    isPlaying: true,
+  },
+  {
+    track: 'City Flow',
+    playlist: 'Дневное настроение',
+    artist: 'Loft Ensemble',
+    progress: 0.61,
+    length: 256,
+    isPlaying: true,
+  },
+  {
+    track: 'Sunset Layers',
+    playlist: 'Вечерняя витрина',
+    artist: 'Skyline Trio',
+    progress: 0.17,
+    length: 301,
+    isPlaying: true,
+  },
+]
+
+function clamp01(value){
+  if (Number.isNaN(value)) return 0
+  if (value < 0) return 0
+  if (value > 1) return 1
+  return value
+}
+
+function createEmptyPlayer(){
+  return {
+    track: null,
+    playlist: null,
+    artist: null,
+    progress: 0,
+    length: 240,
+    isPlaying: false,
+    listId: null,
+    trackId: null,
+  }
+}
+
+function createDemoPlayer(index = 0){
+  const preset = demoPlayerPresets[index % demoPlayerPresets.length]
+  return { ...createEmptyPlayer(), ...preset }
+}
+
+function normalizePlayer(entry, fallback, index){
+  const base = { ...createEmptyPlayer(), ...(fallback || createDemoPlayer(index)) }
+  if (entry && typeof entry === 'object'){
+    if (entry.track) base.track = entry.track
+    if (entry.title && !base.track) base.track = entry.title
+    if (entry.playlist) base.playlist = entry.playlist
+    if (entry.playlistName && !base.playlist) base.playlist = entry.playlistName
+    if (entry.artist) base.artist = entry.artist
+    if (entry.length) base.length = entry.length
+    if (entry.listId) base.listId = entry.listId
+    if (entry.playlistId && !base.listId) base.listId = entry.playlistId
+    if (entry.trackId) base.trackId = entry.trackId
+    if (entry.isPlaying != null) base.isPlaying = !!entry.isPlaying
+    if (typeof entry.state === 'string'){
+      base.isPlaying = entry.state === 'playing'
+    }
+    if (entry.position != null){
+      const position = Math.max(0, Math.min(entry.position, entry.length || base.length || 0))
+      base.progress = base.length ? clamp01(position / base.length) : 0
+    }else if (entry.elapsed != null){
+      const elapsed = Math.max(0, entry.elapsed)
+      base.progress = base.length ? clamp01(elapsed / base.length) : clamp01(entry.progress ?? base.progress)
+    }else if (entry.progress != null){
+      const raw = entry.progress > 1 ? entry.progress / 100 : entry.progress
+      base.progress = clamp01(raw)
+    }
+  }
+  if (!base.track){
+    base.track = null
+  }
+  if (!base.playlist){
+    base.playlist = null
+  }
+  if (typeof base.length !== 'number' || base.length <= 0){
+    base.length = 240
+  }
+  base.progress = clamp01(base.progress)
+  return base
 }
 
 function createDefaultZones(){
@@ -94,6 +204,7 @@ function createDefaultZones(){
           enabled: true,
         },
       ],
+      player: createDemoPlayer(0),
     },
     {
       id: 'z2',
@@ -132,6 +243,7 @@ function createDefaultZones(){
           enabled: true,
         },
       ],
+      player: createDemoPlayer(1),
     },
     {
       id: 'z3',
@@ -160,6 +272,7 @@ function createDefaultZones(){
           enabled: true,
         },
       ],
+      player: createDemoPlayer(2),
     },
   ]
 }
@@ -352,6 +465,7 @@ export default function Schedule(){
         deviceIps,
         playbackWindows: windows.map(normalizeWindow),
         announcements: announcements.map(normalizeAnnouncement),
+        player: normalizePlayer(zone.player, fallback.player, idx),
       }
     })
   })
@@ -420,11 +534,8 @@ export default function Schedule(){
   async function scanDevices(){
     try{
       const res = await api.scan()
-      if(Array.isArray(res) && res.length){
-        setDevices(res)
-      }else{
-        setDevices(scheduleFallbackDevices)
-      }
+      const normalized = normalizeScheduleDevices(res)
+      setDevices(Array.isArray(normalized) && normalized.length ? normalized : scheduleFallbackDevices)
     }catch{
       setDevices(scheduleFallbackDevices)
     }
@@ -515,6 +626,7 @@ export default function Schedule(){
       playlistIds: [],
       playbackWindows: [createDefaultWindow()],
       announcements: [],
+      player: createEmptyPlayer(),
     }])
   }
   function renameZoneWithName(id, name){
@@ -615,6 +727,105 @@ export default function Schedule(){
           : a
         ),
       }
+    }))
+  }
+
+  function handleZonePlayerAction(zoneId, action){
+    if (!zoneId || !action) return
+    setZones(prev => prev.map((zone, idx) => {
+      if (zone.id !== zoneId) return zone
+
+      const player = normalizePlayer(zone.player, defaultZones[idx]?.player, idx)
+      const assignedLists = zone.playlistIds
+        .map(listId => lists.find(l => l.id === listId))
+        .filter(Boolean)
+      const pool = assignedLists.flatMap(list =>
+        (list.tracks || []).map(track => ({
+          id: track.id,
+          listId: list.id,
+          listName: list.name,
+          name: track.name,
+        }))
+      )
+      const fallbackQueue = demoPlayerPresets.map((preset, presetIdx) => ({
+        id: `demo-${presetIdx}`,
+        listId: null,
+        listName: preset.playlist,
+        name: preset.track,
+      }))
+      const queue = pool.length ? pool : (fallbackQueue.length ? fallbackQueue : [{
+        id: 'demo-fallback',
+        listId: null,
+        listName: player.playlist || 'Эфир EraSound',
+        name: player.track || 'Демонстрация',
+      }])
+
+      const findIndex = () => {
+        if (!queue.length) return -1
+        const byId = queue.findIndex(item => item.id && player.trackId && item.id === player.trackId)
+        if (byId !== -1) return byId
+        if (!player.track) return -1
+        return queue.findIndex(item => item.name === player.track)
+      }
+
+      const currentIndex = findIndex()
+
+      if (action === 'stop'){
+        return {
+          ...zone,
+          player: {
+            ...player,
+            isPlaying: false,
+            progress: 0,
+          },
+        }
+      }
+
+      if (action === 'play'){
+        const target = currentIndex >= 0 ? queue[currentIndex] : queue[0]
+        return {
+          ...zone,
+          player: {
+            ...player,
+            isPlaying: true,
+            track: target?.name || player.track,
+            playlist: target?.listName || player.playlist,
+            listId: target?.listId ?? player.listId,
+            trackId: target?.id ?? player.trackId,
+          },
+        }
+      }
+
+      if (action === 'next' || action === 'prev'){
+        if (!queue.length){
+          return {
+            ...zone,
+            player: {
+              ...player,
+              isPlaying: true,
+              progress: 0,
+            },
+          }
+        }
+        const delta = action === 'next' ? 1 : -1
+        const baseIndex = currentIndex >= 0 ? currentIndex : 0
+        const nextIndex = (baseIndex + delta + queue.length) % queue.length
+        const target = queue[nextIndex]
+        return {
+          ...zone,
+          player: {
+            ...player,
+            isPlaying: true,
+            progress: 0,
+            track: target?.name || player.track,
+            playlist: target?.listName || player.playlist,
+            listId: target?.listId ?? player.listId,
+            trackId: target?.id ?? player.trackId,
+          },
+        }
+      }
+
+      return zone
     }))
   }
 
@@ -885,6 +1096,7 @@ export default function Schedule(){
             onEditAnnouncement={(entry)=>openDialog('editAnnouncement', { zoneId: z.id, targetId: entry.id, data: entry })}
             onDeleteAnnouncement={(entry)=>openDialog('deleteAnnouncement', { zoneId: z.id, targetId: entry.id })}
             onToggleAnnouncement={(announcementId)=>toggleAnnouncement(z.id, announcementId)}
+            onPlayerAction={(action)=>handleZonePlayerAction(z.id, action)}
           />
         ))}
       </div>
@@ -1205,6 +1417,7 @@ const panelClass = 'panel bg-white/5 border border-white/10 rounded-lg shadow-gl
 
 /* ======================= ZONE CARD ======================= */
 
+
 function ZoneCard({
   z,
   devices,
@@ -1224,6 +1437,7 @@ function ZoneCard({
   onEditAnnouncement,
   onDeleteAnnouncement,
   onToggleAnnouncement,
+  onPlayerAction,
 }){
   const assigned = z.playlistIds.map(id => lists.find(l => l.id === id)).filter(Boolean)
   const selectedDevices = z.deviceIps.map(ip => devices.find(d => d.ip === ip) || { ip, name: ip })
@@ -1231,6 +1445,53 @@ function ZoneCard({
   const playbackWindows = Array.isArray(z.playbackWindows) ? z.playbackWindows : []
   const announcements = Array.isArray(z.announcements) ? z.announcements : []
   const [over, setOver] = useState(false)
+  const [activeTab, setActiveTab] = useState('overview')
+
+  const deviceCount = selectedDevices.length
+  const playlistCount = assigned.length
+  const windowCount = playbackWindows.length
+  const activeWindowCount = playbackWindows.filter(win => win.enabled).length
+  const announcementCount = announcements.length
+  const activeAnnouncements = announcements.filter(item => item.enabled).length
+
+  const primaryAnnouncement = announcements.find(item => item.enabled) || announcements[0]
+  const nextAnnouncementLabel = primaryAnnouncement
+    ? describeAnnouncement(primaryAnnouncement)
+    : 'Не запланировано'
+
+  const player = z.player || createEmptyPlayer()
+  const rawProgress = typeof player.progress === 'number'
+    ? (player.progress > 1 ? player.progress / 100 : player.progress)
+    : 0
+  const normalizedProgress = clamp01(rawProgress)
+  const progressPercent = Math.round(normalizedProgress * 100)
+  const trackLength = typeof player.length === 'number' ? player.length : 0
+  const elapsedSeconds = Math.round(normalizedProgress * trackLength)
+
+  const tabs = [
+    { id: 'overview', label: 'Основное', Icon: IconOverview },
+    { id: 'devices', label: 'Устройства', Icon: IconDevice },
+    { id: 'playlists', label: 'Плейлисты', Icon: IconPlaylist },
+    { id: 'schedule', label: 'Расписание', Icon: IconSchedule },
+  ]
+
+  const highlight = activeTab === 'playlists' && over
+
+  function handleDragOver(e){
+    e.preventDefault()
+    if (!over) setOver(true)
+    if (activeTab !== 'playlists') setActiveTab('playlists')
+  }
+
+  function handleDragLeave(){
+    setOver(false)
+  }
+
+  function handleDrop(e){
+    e.preventDefault()
+    setOver(false)
+    onDrop(e)
+  }
 
   const deviceCount = selectedDevices.length
   const playlistCount = assigned.length
@@ -1248,209 +1509,456 @@ function ZoneCard({
     <motion.div
       layout
       className={`${panelClass} p-4 flex flex-col gap-5`}
-      onDragOver={(e)=>{e.preventDefault(); setOver(true)}}
-      onDragLeave={()=>setOver(false)}
-      onDrop={(e)=>{ e.preventDefault(); setOver(false); onDrop(e) }}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 space-y-2">
-          <div className="text-[11px] uppercase tracking-[0.14em] text-white/40">Зона</div>
-          <div className="text-lg font-semibold truncate">{z.name}</div>
-          <div className="flex flex-wrap gap-2 pt-1">
-            <SummaryStat icon="📡" label="Устройства" value={deviceCount ? `${deviceCount}` : 'Нет'} accent={deviceCount > 0} />
-            <SummaryStat icon="🎛" label="Плейлисты" value={playlistCount ? `${playlistCount}` : 'Не назначены'} accent={playlistCount > 0} />
-            <SummaryStat icon="🕑" label="Окна" value={windowCount ? `${activeWindowCount}/${windowCount}` : 'Нет'} accent={activeWindowCount > 0} />
-            <SummaryStat icon="🔔" label="Включения" value={announcementCount ? `${activeAnnouncements}/${announcementCount}` : 'Нет'} accent={activeAnnouncements > 0} />
+      <div className="space-y-4">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 space-y-1">
+              <div className="text-[11px] uppercase tracking-[0.14em] text-white/40">Зона</div>
+              <div className="text-lg font-semibold truncate">{z.name}</div>
+            </div>
+            <div className="flex gap-2">
+              <StatBubble label="Устройства" value={deviceCount} Icon={IconDeviceSmall} />
+              <StatBubble label="Плейлисты" value={playlistCount} Icon={IconPlaylistSmall} />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {selectedDevices.slice(0, 3).map(dev => (
+              <DeviceStatusChip key={dev.ip} name={dev.name || dev.ip} status={resolveDeviceStatus(dev)} />
+            ))}
+            {deviceCount > 3 && (
+              <span className="rounded-full bg-white/5 px-3 py-1 text-xs text-white/50">
+                + ещё {deviceCount - 3}
+              </span>
+            )}
           </div>
         </div>
-        <div className="flex gap-1 self-start">
-          <IconButton onClick={onRename} label="Переименовать зону" icon="✎" />
-          <IconButton onClick={onDelete} label="Удалить зону" icon="🗑" />
-        </div>
-      </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between text-xs text-white/50">
-          <span className="uppercase tracking-wide">Устройства</span>
-          {deviceCount > 0 && <span className="text-white/40">{deviceCount} выбрано</span>}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {selectedDevices.slice(0, 3).map(dev => (
-            <span key={dev.ip} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-white/80">
-              <span className="truncate max-w-[7rem] sm:max-w-[9rem]">{dev.name || dev.ip}</span>
-              <button
-                type="button"
-                className="text-xs text-white/50 hover:text-white"
-                onClick={()=>onRemoveDevice(dev.ip)}
-                aria-label={`Убрать устройство ${dev.name || dev.ip}`}
-              >×</button>
-            </span>
-          ))}
-          {deviceCount > 3 && (
-            <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/50">
-              + ещё {deviceCount - 3}
-            </span>
-          )}
-          <DevicePicker available={availableDevices} onSelect={(ip)=>onToggleDevice(ip)} />
-        </div>
-        {deviceCount === 0 && (
-          <div className="text-sm text-white/60 bg-white/5 border border-white/10 rounded-md px-3 py-2">
-            Добавьте хотя бы одно устройство, чтобы запустить трансляцию в зоне.
+        <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-3">
+          <div className="flex items-center justify-between text-xs text-white/50">
+            <span>Сейчас в эфире</span>
+            {player.playlist && <span className="max-w-[60%] truncate text-right text-white/40">{player.playlist}</span>}
           </div>
-        )}
-      </div>
-
-      <div className={`p-3 border rounded-md transition-colors ${over ? 'border-white/30 bg-white/5' : 'border-white/10 bg-transparent'}`}>
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-xs uppercase tracking-wide text-white/50">Плейлисты зоны</div>
-          <div className="text-[11px] text-white/40">Перетащите карточку сюда</div>
-        </div>
-        <div className="mt-3 space-y-2">
-          {assigned.length === 0 && (
-            <div className="text-white/60 text-sm border border-dashed border-white/15 rounded-md px-3 py-5 text-center">
-              Пока не назначено ни одного плейлиста — перетащите карточку из списка справа.
+          {player.track ? (
+            <div className="space-y-3">
+              <div className="text-sm font-medium text-white/80 truncate">{player.track}</div>
+              {player.artist && <div className="text-xs text-white/50 truncate">{player.artist}</div>}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <CircleIconButton icon={<IconPrev className="h-4 w-4" />} label="Предыдущий трек" onClick={()=>onPlayerAction?.('prev')} />
+                  <CircleIconButton icon={<IconPlay className="h-4 w-4" />} label="Воспроизвести" onClick={()=>onPlayerAction?.('play')} />
+                  <CircleIconButton icon={<IconStop className="h-4 w-4" />} label="Остановить" onClick={()=>onPlayerAction?.('stop')} />
+                  <CircleIconButton icon={<IconNext className="h-4 w-4" />} label="Следующий трек" onClick={()=>onPlayerAction?.('next')} />
+                </div>
+                <div className="flex w-full items-center gap-2 text-xs text-white/50 sm:w-auto sm:flex-1">
+                  <span className="font-mono text-white/60">{formatClock(elapsedSeconds)}</span>
+                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+                    <div className="h-full bg-emerald-400/80 transition-all duration-500" style={{ width: `${progressPercent}%` }} />
+                  </div>
+                  <span className="font-mono text-white/40">{formatClock(trackLength)}</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg bg-white/5 px-3 py-2 text-xs text-white/60">
+              Назначьте плейлист в этой зоне, чтобы запустить эфир.
             </div>
           )}
-          {assigned.map(pl => {
-            const totalTracks = pl.tracks.length
-            const transferSnapshot = summarizeTransfers({
-              zoneId: z.id,
-              playlistId: pl.id,
-              devices: selectedDevices,
-              transfers,
-            })
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        <div className="flex gap-2">
+          {tabs.map(tab => {
+            const Icon = tab.Icon
             return (
-              <div key={pl.id} className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-3">
-                <div className="flex items-start gap-3">
-                  <div className="w-2.5 h-2.5 rounded-full bg-sky-300/70 mt-1.5" />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium text-sm">{pl.name}</div>
-                    <div className="text-xs text-white/50">{totalTracks} трек(ов)</div>
-                  </div>
-                  <IconButton onClick={()=>onUnassign(pl.id)} label="Убрать плейлист" icon="×" />
-                </div>
-                <TransferSummary snapshot={transferSnapshot} />
-              </div>
+              <TabButton
+                key={tab.id}
+                active={activeTab === tab.id}
+                label={tab.label}
+                onClick={()=>setActiveTab(tab.id)}
+              >
+                <Icon className="h-4 w-4" />
+              </TabButton>
             )
           })}
         </div>
-      </div>
 
-      <div className="space-y-3">
-        <SectionRow
-          title="Расписание активности"
-          subtitle="Контролируйте, когда зона включена"
-          actionLabel="Окно"
-          onAction={onAddWindow}
-        />
-        <div className="grid gap-2 sm:grid-cols-2">
-          {playbackWindows.map(window => (
-            <div key={window.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="font-medium truncate text-sm">{window.label}</div>
-                  <div className="text-xs text-white/50">{formatDaysForDisplay(window.days)}</div>
-                </div>
-                <ToggleChip active={window.enabled} onClick={()=>onToggleWindow(window.id)} />
-              </div>
-              <div className="mt-3 flex items-center gap-2 text-xs text-white/60">
-                <span className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/10 px-3 py-1 font-mono text-[13px] text-white/70">
-                  {window.start}
-                  <span className="text-white/30">→</span>
-                  {window.end}
-                </span>
-                <div className="ml-auto flex gap-1">
-                  <IconButton onClick={()=>onEditWindow(window)} label="Редактировать окно" icon="✎" />
-                  <IconButton onClick={()=>onDeleteWindow(window)} label="Удалить окно" icon="🗑" />
-                </div>
-              </div>
+        {activeTab === 'overview' && (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <OverviewTile
+                icon={<IconClock className="h-4 w-4" />}
+                title="Окна эфира"
+                value={`${activeWindowCount}/${windowCount || 0}`}
+                hint={windowCount ? 'активно' : 'нет окон'}
+              />
+              <OverviewTile
+                icon={<IconBell className="h-4 w-4" />}
+                title="Точечные включения"
+                value={`${activeAnnouncements}/${announcementCount || 0}`}
+                hint={nextAnnouncementLabel}
+              />
             </div>
-          ))}
-          {playbackWindows.length === 0 && (
-            <div className="rounded-lg border border-dashed border-white/15 bg-transparent px-3 py-5 text-center text-sm text-white/60">
-              Пока нет временных окон.
+            <div className="flex items-center gap-2">
+              <CircleIconButton icon={<IconEdit className="h-4 w-4" />} label="Переименовать зону" onClick={onRename} />
+              <CircleIconButton icon={<IconTrash className="h-4 w-4" />} label="Удалить зону" onClick={onDelete} tone="danger" />
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        )}
 
-      <div className="space-y-3">
-        <SectionRow
-          title="Точечные включения"
-          subtitle={nextAnnouncementLabel}
-          actionLabel="Включение"
-          onAction={onAddAnnouncement}
-        />
-        <div className="grid gap-2 sm:grid-cols-2">
-          {announcements.map(entry => (
-            <div key={entry.id} className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-2">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="font-medium truncate text-sm">{entry.title}</div>
-                  <div className="text-xs text-white/50 truncate">{resolveAnnouncementTrackLabel(entry, lists)}</div>
+        {activeTab === 'devices' && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {selectedDevices.map(dev => (
+                <DeviceDetailChip
+                  key={dev.ip}
+                  name={dev.name || dev.ip}
+                  ip={dev.ip}
+                  status={resolveDeviceStatus(dev)}
+                  onRemove={()=>onRemoveDevice(dev.ip)}
+                />
+              ))}
+              {selectedDevices.length === 0 && (
+                <div className="rounded-lg border border-dashed border-white/15 px-3 py-4 text-center text-sm text-white/60">
+                  Нет подключённых устройств — выберите узлы ниже.
                 </div>
-                <ToggleChip active={entry.enabled} onClick={()=>onToggleAnnouncement(entry.id)} labelOn="On" labelOff="Off" />
-              </div>
-              <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
-                <ScheduleBadge>{describeAnnouncement(entry)}</ScheduleBadge>
-                {entry.repeat === 'weekly' && entry.days?.length > 0 && (
-                  <ScheduleBadge>{formatDaysForDisplay(entry.days)}</ScheduleBadge>
-                )}
-                <div className="ml-auto flex gap-1 text-sm">
-                  <IconButton onClick={()=>onEditAnnouncement(entry)} label="Редактировать включение" icon="✎" />
-                  <IconButton onClick={()=>onDeleteAnnouncement(entry)} label="Удалить включение" icon="🗑" />
+              )}
+            </div>
+            <DevicePicker available={availableDevices} onSelect={(ip)=>onToggleDevice(ip)} />
+          </div>
+        )}
+
+        {activeTab === 'playlists' && (
+          <div className={`rounded-xl border ${highlight ? 'border-emerald-300/60 bg-emerald-300/5' : 'border-white/10 bg-white/5'} p-4 transition-colors`}>
+            <div className="flex items-center justify-between text-xs text-white/50">
+              <span>Плейлисты зоны</span>
+              <span className="text-white/40">{playlistCount ? `${playlistCount} назначено` : 'перетащите карточку'}</span>
+            </div>
+            <div className="mt-3 space-y-2">
+              {assigned.map(pl => {
+                const totalTracks = pl.tracks.length
+                const snapshot = summarizeTransfers({
+                  zoneId: z.id,
+                  playlistId: pl.id,
+                  devices: selectedDevices,
+                  transfers,
+                })
+                return (
+                  <div key={pl.id} className="rounded-lg border border-white/10 bg-neutral-900/60 p-3 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium truncate">{pl.name}</div>
+                        <div className="text-xs text-white/50">{totalTracks} трек(ов)</div>
+                      </div>
+                      <CircleIconButton icon={<IconMinus className="h-4 w-4" />} label="Убрать плейлист" onClick={()=>onUnassign(pl.id)} />
+                    </div>
+                    <TransferSummary snapshot={snapshot} />
+                  </div>
+                )
+              })}
+              {assigned.length === 0 && (
+                <div className="rounded-lg border border-dashed border-white/15 px-3 py-5 text-center text-sm text-white/60">
+                  Перетащите плейлист справа, чтобы запланировать эфир.
                 </div>
-              </div>
+              )}
             </div>
-          ))}
-          {announcements.length === 0 && (
-            <div className="rounded-lg border border-dashed border-white/15 bg-transparent px-3 py-5 text-center text-sm text-white/60">
-              Добавьте запланированные включения, чтобы запускать объявления и джинглы.
+          </div>
+        )}
+
+        {activeTab === 'schedule' && (
+          <div className="space-y-4">
+            <SubsectionHeader
+              title="Временные окна"
+              subtitle={windowCount ? `${activeWindowCount} активны из ${windowCount}` : 'пока не создано'}
+              actionLabel="Добавить окно"
+              onAction={onAddWindow}
+            />
+            <div className="space-y-2">
+              {playbackWindows.map(window => (
+                <div key={window.id} className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">{window.label}</div>
+                      <div className="text-xs text-white/50">{window.start} — {window.end}</div>
+                    </div>
+                    <ToggleChip active={window.enabled} onClick={()=>onToggleWindow(window.id)} labelOn="On" labelOff="Off" />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+                    <ScheduleBadge>{formatDaysForDisplay(window.days)}</ScheduleBadge>
+                    <div className="ml-auto flex gap-1">
+                      <CircleIconButton icon={<IconEdit className="h-4 w-4" />} label="Редактировать окно" onClick={()=>onEditWindow(window)} size="sm" variant="ghost" />
+                      <CircleIconButton icon={<IconTrash className="h-4 w-4" />} label="Удалить окно" onClick={()=>onDeleteWindow(window)} size="sm" variant="ghost" tone="danger" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {playbackWindows.length === 0 && (
+                <div className="rounded-lg border border-dashed border-white/15 px-3 py-5 text-center text-sm text-white/60">
+                  Добавьте временные окна, чтобы ограничить звучание по расписанию.
+                </div>
+              )}
             </div>
-          )}
-        </div>
+
+            <SubsectionHeader
+              title="Точечные включения"
+              subtitle={announcementCount ? nextAnnouncementLabel : 'пока не запланировано'}
+              actionLabel="Добавить включение"
+              onAction={onAddAnnouncement}
+            />
+            <div className="space-y-2">
+              {announcements.map(entry => (
+                <div key={entry.id} className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">{entry.title}</div>
+                      <div className="text-xs text-white/50 truncate">{resolveAnnouncementTrackLabel(entry, lists)}</div>
+                    </div>
+                    <ToggleChip active={entry.enabled} onClick={()=>onToggleAnnouncement(entry.id)} labelOn="On" labelOff="Off" />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+                    <ScheduleBadge>{describeAnnouncement(entry)}</ScheduleBadge>
+                    {entry.repeat === 'weekly' && entry.days?.length > 0 && (
+                      <ScheduleBadge>{formatDaysForDisplay(entry.days)}</ScheduleBadge>
+                    )}
+                    <div className="ml-auto flex gap-1">
+                      <CircleIconButton icon={<IconEdit className="h-4 w-4" />} label="Редактировать включение" onClick={()=>onEditAnnouncement(entry)} size="sm" variant="ghost" />
+                      <CircleIconButton icon={<IconTrash className="h-4 w-4" />} label="Удалить включение" onClick={()=>onDeleteAnnouncement(entry)} size="sm" variant="ghost" tone="danger" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {announcements.length === 0 && (
+                <div className="rounded-lg border border-dashed border-white/15 px-3 py-5 text-center text-sm text-white/60">
+                  Настройте объявления и джинглы для событий и напоминаний.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </motion.div>
   )
 }
 
-
-function SectionRow({ title, subtitle, actionLabel, onAction }){
-  return (
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-      <div className="space-y-0.5">
-        <div className="text-xs uppercase tracking-wide text-white/50">{title}</div>
-        {subtitle && <div className="text-xs text-white/40">{subtitle}</div>}
-      </div>
-      <button className="btn glass" onClick={onAction}>+ {actionLabel}</button>
-    </div>
-  )
+function formatClock(seconds){
+  if (seconds == null || Number.isNaN(seconds) || seconds < 0) return '--:--'
+  const total = Math.round(seconds)
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-function IconButton({ onClick, label, icon }){
+function TabButton({ active, label, onClick, children }){
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={label}
-      className="btn glass h-9 w-9 shrink-0 flex items-center justify-center text-base"
       title={label}
+      className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 ${active ? 'bg-white/20 text-white shadow-glass' : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'}`}
+    >
+      {children}
+    </button>
+  )
+}
+
+function CircleIconButton({ icon, label, onClick, tone = 'neutral', size = 'md', variant = 'solid' }){
+  const sizeClass = size === 'sm' ? 'h-8 w-8 text-sm' : size === 'xs' ? 'h-7 w-7 text-xs' : 'h-9 w-9 text-base'
+  const palette = tone === 'danger'
+    ? 'text-rose-200 hover:text-rose-100 focus-visible:ring-rose-400/40'
+    : 'text-white/70 hover:text-white focus-visible:ring-white/30'
+  const background = variant === 'ghost'
+    ? 'bg-white/5 hover:bg-white/15'
+    : 'bg-white/10 hover:bg-white/20'
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={`flex items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-0 ${sizeClass} ${background} ${palette}`}
     >
       {icon}
     </button>
   )
 }
 
-function SummaryStat({ icon, label, value, accent }){
+function StatBubble({ Icon, label, value }){
   return (
-    <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition-colors ${accent ? 'border-emerald-400/60 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-white/5 text-white/60'}`}>
-      <span aria-hidden="true">{icon}</span>
-      <span className="font-medium text-white/70">{value}</span>
+    <div className="flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs text-white/60">
+      <Icon className="h-4 w-4 text-white/50" aria-hidden="true" />
+      <span className="font-semibold text-white">{value}</span>
       <span className="text-white/40">{label}</span>
     </div>
   )
 }
 
+function DeviceStatusChip({ name, status }){
+  const color = status === 'offline' ? 'bg-rose-500' : status === 'warning' ? 'bg-amber-400' : 'bg-emerald-400'
+  return (
+    <div className="flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs text-white/70">
+      <span className={`h-2 w-2 rounded-full ${color}`} />
+      <span className="truncate max-w-[8rem]">{name}</span>
+    </div>
+  )
+}
+
+function DeviceDetailChip({ name, ip, status, onRemove }){
+  const color = status === 'offline' ? 'bg-rose-500' : status === 'warning' ? 'bg-amber-400' : 'bg-emerald-400'
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/70">
+      <span className={`h-2.5 w-2.5 rounded-full ${color}`} />
+      <div className="min-w-0">
+        <div className="truncate text-sm text-white/80">{name}</div>
+        <div className="text-[11px] text-white/40">{ip}</div>
+      </div>
+      <CircleIconButton
+        icon={<IconMinus className="h-3.5 w-3.5" />}
+        label={`Убрать ${name}`}
+        onClick={onRemove}
+        size="xs"
+        variant="ghost"
+      />
+    </div>
+  )
+}
+
+function SubsectionHeader({ title, subtitle, onAction, actionLabel }){
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="space-y-0.5">
+        <div className="text-xs uppercase tracking-wide text-white/50">{title}</div>
+        {subtitle && <div className="text-xs text-white/40">{subtitle}</div>}
+      </div>
+      {onAction && (
+        <CircleIconButton icon={<IconPlus className="h-4 w-4" />} label={actionLabel} onClick={onAction} />
+      )}
+    </div>
+  )
+}
+
+function OverviewTile({ icon, title, value, hint }){
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
+      <div className="flex items-center gap-2 text-white/60 text-sm">
+        {icon}
+        <span>{title}</span>
+      </div>
+      <div className="text-lg font-semibold text-white">{value}</div>
+      {hint && <div className="text-xs text-white/40 truncate">{hint}</div>}
+    </div>
+  )
+}
+
+function resolveDeviceStatus(device){
+  const raw = (device?.status || '').toString().toLowerCase()
+  if (raw.includes('off') || raw === 'red') return 'offline'
+  if (raw.includes('warn') || raw.includes('degrad') || raw === 'yellow') return 'warning'
+  if (device?.online === false) return 'offline'
+  if (device?.online === true) return 'online'
+  if (raw.includes('idle')) return 'warning'
+  return 'online'
+}
+
+const IconOverview = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M5 7h14" />
+    <path d="M5 12h10" />
+    <path d="M5 17h6" />
+  </svg>
+)
+
+const IconDevice = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <rect x="3.5" y="5" width="17" height="12" rx="2" />
+    <path d="M8 19h8" />
+  </svg>
+)
+
+const IconPlaylist = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M5 8h10" />
+    <path d="M5 12h8" />
+    <path d="M5 16h6" />
+    <path d="M17 8v8.5a2.5 2.5 0 1 0 2-2.45V8h-2z" />
+  </svg>
+)
+
+const IconSchedule = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <circle cx="12" cy="12" r="7" />
+    <path d="M12 8v4l2.5 2.5" />
+  </svg>
+)
+
+const IconDeviceSmall = IconDevice
+const IconPlaylistSmall = IconPlaylist
+
+const IconClock = IconSchedule
+
+const IconBell = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M15 17H9a3 3 0 0 1-3-3v-2a6 6 0 0 1 12 0v2a3 3 0 0 1-3 3Z" />
+    <path d="M13 21a1 1 0 0 1-2 0" />
+  </svg>
+)
+
+const IconPlay = (props) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+    <path d="M8 5.5v13l11-6.5-11-6.5Z" />
+  </svg>
+)
+
+const IconStop = (props) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+    <rect x="7" y="7" width="10" height="10" rx="2" />
+  </svg>
+)
+
+const IconNext = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M5 7l8 5-8 5V7z" fill="currentColor" />
+    <path d="M19 7v10" />
+  </svg>
+)
+
+const IconPrev = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M19 7l-8 5 8 5V7z" fill="currentColor" />
+    <path d="M5 7v10" />
+  </svg>
+)
+
+const IconEdit = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M4 20h4l10.5-10.5a1.5 1.5 0 0 0-2.12-2.12L6 17.88V20Z" />
+  </svg>
+)
+
+const IconTrash = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M6 7h12" />
+    <path d="M10 7v-2h4v2" />
+    <path d="M8 7v11a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7" />
+  </svg>
+)
+
+const IconPlus = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M12 5v14" />
+    <path d="M5 12h14" />
+  </svg>
+)
+
+const IconMinus = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M5 12h14" />
+  </svg>
+)
 function summarizeTransfers({ zoneId, playlistId, devices, transfers }){
   if (!devices.length) {
     return { state: 'idle', progress: 0, total: 0, completed: 0 }
@@ -1529,11 +2037,13 @@ function DevicePicker({ available, onSelect }){
     <div ref={ref} className="relative">
       <button
         type="button"
-        className={`btn glass ${hasOptions ? '' : 'opacity-60 cursor-not-allowed'}`}
+        className={`flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 ${hasOptions ? 'hover:bg-white/20 hover:text-white' : 'cursor-not-allowed opacity-40'}`}
         onClick={() => hasOptions && setOpen(v => !v)}
         disabled={!hasOptions}
+        aria-label="Добавить устройство"
+        title={hasOptions ? 'Добавить устройство' : 'Нет доступных устройств'}
       >
-        + Устройство
+        <IconPlus className="h-4 w-4" />
       </button>
       {open && hasOptions && (
         <div className="absolute right-0 z-20 mt-2 w-56 rounded-lg border border-white/10 bg-neutral-950/90 backdrop-blur px-2 py-2 shadow-xl">
