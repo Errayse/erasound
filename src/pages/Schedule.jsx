@@ -1509,7 +1509,7 @@ function ZoneCard({
     >
       <div className="p-4 space-y-4">
         <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 min-w-0">
               <button
                 type="button"
@@ -1525,68 +1525,13 @@ function ZoneCard({
                 <div className="text-base font-semibold truncate">{z.name}</div>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <SummaryPill icon={<IconDeviceSmall className="h-4 w-4" aria-hidden="true" />} label="Устройства" value={zoneDeviceCount} />
-              <SummaryPill icon={<IconPlaylistSmall className="h-4 w-4" aria-hidden="true" />} label="Плейлисты" value={playlistCount} />
-            </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            {selectedDevices.slice(0, 3).map(dev => (
-              <DeviceStatusChip key={dev.ip} name={dev.name || dev.ip} status={resolveDeviceStatus(dev)} />
-            ))}
-            {zoneDeviceCount > 3 && (
-              <span className="rounded-full bg-white/5 px-3 py-1 text-xs text-white/50">
-                + ещё {zoneDeviceCount - 3}
-              </span>
-            )}
+            <SummaryPill icon={<IconDeviceSmall className="h-4 w-4" aria-hidden="true" />} label="Устройства" value={zoneDeviceCount} />
+            <SummaryPill icon={<IconPlaylistSmall className="h-4 w-4" aria-hidden="true" />} label="Плейлисты" value={playlistCount} />
           </div>
         </div>
 
-        <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-3">
-          <div className="flex items-center justify-between text-xs text-white/50">
-            <span>{player.isPlaying ? 'Сейчас в эфире' : 'Эфир приостановлен'}</span>
-            {player.playlist && <span className="max-w-[60%] truncate text-right text-white/40">{player.playlist}</span>}
-          </div>
-          <div className="flex flex-col gap-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className={`truncate text-sm font-medium ${player.track ? 'text-white/85' : 'text-white/40'}`}>
-                  {player.track || 'Нет активного трека'}
-                </div>
-                {player.artist && <div className="text-xs text-white/40 truncate">{player.artist}</div>}
-              </div>
-              <div className="flex items-center gap-2 text-[11px] text-white/50">
-                <span className={`h-2 w-2 rounded-full ${player.isPlaying ? 'bg-emerald-400' : 'bg-white/30'}`} />
-                <span>{player.isPlaying ? 'В эфире' : 'Ожидание'}</span>
-              </div>
-            </div>
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <CircleIconButton icon={<IconPrev className="h-4 w-4" />} label="Предыдущий трек" onClick={()=>onPlayerAction?.('prev')} variant="ghost" size="sm" />
-                  <CircleIconButton icon={<IconPlay className="h-4 w-4" />} label="Воспроизвести" onClick={()=>onPlayerAction?.('play')} variant="ghost" size="sm" />
-                  <CircleIconButton icon={<IconStop className="h-4 w-4" />} label="Остановить" onClick={()=>onPlayerAction?.('stop')} variant="ghost" size="sm" />
-                  <CircleIconButton icon={<IconNext className="h-4 w-4" />} label="Следующий трек" onClick={()=>onPlayerAction?.('next')} variant="ghost" size="sm" />
-                </div>
-                <div className="min-w-[56px] text-right text-xs text-white/50">{progressPercent}%</div>
-              </div>
-              <div className="space-y-1">
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                  <motion.div
-                    className="h-full bg-white/80"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${progressPercent}%` }}
-                    transition={{ duration: 0.4 }}
-                  />
-                </div>
-                <div className="flex justify-between text-[11px] text-white/40">
-                  <span>{formatClockTime(elapsedSeconds)}</span>
-                  <span>{formatClockTime(trackLength)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
         {expanded && (
           <div id={detailsId} className="space-y-4 border-t border-white/10 pt-4">
@@ -1764,8 +1709,312 @@ function ZoneCard({
             )}
           </div>
         )}
+
+        <div className="space-y-3 border-t border-white/10 pt-4">
+          <div className="flex items-center justify-between text-xs text-white/50">
+            <span>{player.isPlaying ? 'Сейчас в эфире' : 'Эфир приостановлен'}</span>
+            {player.playlist && <span className="max-w-[60%] truncate text-right text-white/40">{player.playlist}</span>}
+          </div>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className={`truncate text-sm font-medium ${player.track ? 'text-white/85' : 'text-white/40'}`}>
+                  {player.track || 'Нет активного трека'}
+                </div>
+                {player.artist && <div className="text-xs text-white/40 truncate">{player.artist}</div>}
+              </div>
+              <div className="flex items-center gap-2 text-[11px] text-white/50">
+                <span className={`h-2 w-2 rounded-full ${player.isPlaying ? 'bg-emerald-400' : 'bg-white/30'}`} />
+                <span>{player.isPlaying ? 'В эфире' : 'Ожидание'}</span>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <CircleIconButton icon={<IconPrev className="h-4 w-4" />} label="Предыдущий трек" onClick={()=>onPlayerAction?.('prev')} variant="ghost" size="sm" />
+                  <CircleIconButton icon={<IconPlay className="h-4 w-4" />} label="Воспроизвести" onClick={()=>onPlayerAction?.('play')} variant="ghost" size="sm" />
+                  <CircleIconButton icon={<IconStop className="h-4 w-4" />} label="Остановить" onClick={()=>onPlayerAction?.('stop')} variant="ghost" size="sm" />
+                  <CircleIconButton icon={<IconNext className="h-4 w-4" />} label="Следующий трек" onClick={()=>onPlayerAction?.('next')} variant="ghost" size="sm" />
+                </div>
+                <div className="min-w-[56px] text-right text-xs text-white/50">{progressPercent}%</div>
+              </div>
+              <div className="space-y-1">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                  <motion.div
+                    className="h-full bg-white/80"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${progressPercent}%` }}
+                    transition={{ duration: 0.4 }}
+                  />
+                </div>
+                <div className="flex justify-between text-[11px] text-white/40">
+                  <span>{formatClockTime(elapsedSeconds)}</span>
+                  <span>{formatClockTime(trackLength)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-    </motion.div>
+      {onAction && (
+        <CircleIconButton icon={<IconPlus className="h-4 w-4" />} label={actionLabel} onClick={onAction} />
+      )}
+    </div>
+  )
+}
+
+function OverviewTile({ icon, title, value, hint }){
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
+      <div className="flex items-center gap-2 text-white/60 text-sm">
+        {icon}
+        <span>{title}</span>
+      </div>
+      <div className="text-lg font-semibold text-white">{value}</div>
+      {hint && <div className="text-xs text-white/40 truncate">{hint}</div>}
+    </div>
+  )
+}
+
+function resolveDeviceStatus(device){
+  const raw = (device?.status || '').toString().toLowerCase()
+  if (raw.includes('off') || raw === 'red') return 'offline'
+  if (raw.includes('warn') || raw.includes('degrad') || raw === 'yellow') return 'warning'
+  if (device?.online === false) return 'offline'
+  if (device?.online === true) return 'online'
+  if (raw.includes('idle')) return 'warning'
+  return 'online'
+}
+
+const IconChevronDown = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="m6 9 6 6 6-6" />
+  </svg>
+)
+
+const IconOverview = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M5 7h14" />
+    <path d="M5 12h10" />
+    <path d="M5 17h6" />
+  </svg>
+)
+
+const IconDevice = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <rect x="3.5" y="5" width="17" height="12" rx="2" />
+    <path d="M8 19h8" />
+  </svg>
+)
+
+const IconPlaylist = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M5 8h10" />
+    <path d="M5 12h8" />
+    <path d="M5 16h6" />
+    <path d="M17 8v8.5a2.5 2.5 0 1 0 2-2.45V8h-2z" />
+  </svg>
+)
+
+const IconSchedule = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <circle cx="12" cy="12" r="7" />
+    <path d="M12 8v4l2.5 2.5" />
+  </svg>
+)
+
+const IconDeviceSmall = IconDevice
+const IconPlaylistSmall = IconPlaylist
+
+const IconClock = IconSchedule
+
+const IconBell = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M15 17H9a3 3 0 0 1-3-3v-2a6 6 0 0 1 12 0v2a3 3 0 0 1-3 3Z" />
+    <path d="M13 21a1 1 0 0 1-2 0" />
+  </svg>
+)
+
+const IconPlay = (props) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+    <path d="M8 5.5v13l11-6.5-11-6.5Z" />
+  </svg>
+)
+
+const IconStop = (props) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+    <rect x="7" y="7" width="10" height="10" rx="2" />
+  </svg>
+)
+
+const IconNext = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M5 7l8 5-8 5V7z" fill="currentColor" />
+    <path d="M19 7v10" />
+  </svg>
+)
+
+const IconPrev = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M19 7l-8 5 8 5V7z" fill="currentColor" />
+    <path d="M5 7v10" />
+  </svg>
+)
+
+const IconEdit = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M4 20h4l10.5-10.5a1.5 1.5 0 0 0-2.12-2.12L6 17.88V20Z" />
+  </svg>
+)
+
+const IconTrash = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M6 7h12" />
+    <path d="M10 7v-2h4v2" />
+    <path d="M8 7v11a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7" />
+  </svg>
+)
+
+const IconPlus = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M12 5v14" />
+    <path d="M5 12h14" />
+  </svg>
+)
+
+const IconMinus = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M5 12h14" />
+  </svg>
+)
+function summarizeTransfers({ zoneId, playlistId, devices, transfers }){
+  if (!devices.length) {
+    return { state: 'idle', progress: 0, total: 0, completed: 0 }
+  }
+  let progress = 0
+  let completed = 0
+  devices.forEach(dev => {
+    const key = transferKey(zoneId, playlistId, dev.ip)
+    const entry = transfers[key]
+    if (entry?.status === 'success') {
+      completed += 1
+      progress += 100
+    } else {
+      const val = entry?.progress ?? 0
+      progress += Math.max(0, Math.min(100, val))
+    }
+  })
+  const avg = progress / devices.length
+  if (completed === devices.length) {
+    return { state: 'success', progress: 100, total: devices.length, completed }
+  }
+  return { state: 'progress', progress: Math.round(avg), total: devices.length, completed }
+}
+
+function TransferSummary({ snapshot }){
+  if (snapshot.total === 0) {
+    return (
+      <div className="text-xs text-white/50">
+        Добавьте устройство выше, чтобы выгрузить плейлист.
+      </div>
+    )
+  }
+
+  const barClass = snapshot.state === 'success' ? 'bg-emerald-400/80' : 'bg-sky-400/80'
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-xs text-white/60">
+        <span>{snapshot.completed}/{snapshot.total} устройств</span>
+        <span className="text-white/70">{snapshot.state === 'success' ? 'Готово' : `${snapshot.progress}%`}</span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+        <motion.div
+          className={`h-full ${barClass}`}
+          initial={{ width: 0 }}
+          animate={{ width: `${snapshot.progress}%` }}
+          transition={{ duration: 0.4 }}
+        />
+      </div>
+    </div>
+  )
+}
+
+
+function DevicePicker({ available, onSelect }){
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const hasOptions = available.length > 0
+
+  useEffect(() => {
+    if (!open) return
+    const handleClick = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [open])
+
+  useEffect(() => {
+    if (!hasOptions) setOpen(false)
+  }, [hasOptions])
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        className={`flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 ${hasOptions ? 'hover:bg-white/20 hover:text-white' : 'cursor-not-allowed opacity-40'}`}
+        onClick={() => hasOptions && setOpen(v => !v)}
+        disabled={!hasOptions}
+        aria-label="Добавить устройство"
+        title={hasOptions ? 'Добавить устройство' : 'Нет доступных устройств'}
+      >
+        <IconPlus className="h-4 w-4" />
+      </button>
+      {open && hasOptions && (
+        <div className="absolute right-0 z-20 mt-2 w-56 rounded-lg border border-white/10 bg-neutral-950/90 backdrop-blur px-2 py-2 shadow-xl">
+          <div className="text-xs text-white/40 px-3 pb-2">Доступные устройства</div>
+          <div className="space-y-1 max-h-56 overflow-auto pr-1">
+            {available.map(dev => (
+              <button
+                key={dev.ip}
+                type="button"
+                className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-white/10 focus:bg-white/10 focus:outline-none"
+                onClick={() => { onSelect(dev.ip); setOpen(false) }}
+              >
+                <div className="font-medium truncate">{dev.name || dev.ip}</div>
+                <div className="text-xs text-white/50">{dev.ip}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ToggleChip({ active, onClick, labelOn = 'Вкл', labelOff = 'Выкл' }){
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition-colors
+        ${active ? 'border-emerald-400/70 bg-emerald-400/10 text-emerald-200' : 'border-white/15 bg-white/5 text-white/60 hover:text-white'}`}
+    >
+      <span className={`h-2 w-2 rounded-full ${active ? 'bg-emerald-300' : 'bg-white/30'}`} />
+      {active ? labelOn : labelOff}
+    </button>
+  )
+}
+
+function ScheduleBadge({ children }){
+  return (
+    <span className="inline-flex items-center rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/60">
+      {children}
+    </span>
   )
 }
 
@@ -1818,16 +2067,6 @@ function SummaryPill({ icon, label, value }){
       <span className="text-white/50" aria-hidden="true">{icon}</span>
       <span className="font-semibold text-white">{value}</span>
       <span className="text-white/40">{label}</span>
-    </div>
-  )
-}
-
-function DeviceStatusChip({ name, status }){
-  const color = status === 'offline' ? 'bg-rose-500' : status === 'warning' ? 'bg-amber-400' : 'bg-emerald-400'
-  return (
-    <div className="flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs text-white/70">
-      <span className={`h-2 w-2 rounded-full ${color}`} />
-      <span className="truncate max-w-[8rem]">{name}</span>
     </div>
   )
 }
