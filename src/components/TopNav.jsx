@@ -10,7 +10,7 @@ import { motion } from 'framer-motion'
  * - единый стиль для всего приложения
  */
 
-const TABS = ['Обзор','Сеть','Медиа','Зоны','Расписание','Параметры']
+const TABS = ['Панель','Сеть','Зонирование','Планировщик','Параметры']
 
 export default function TopNav({ tab, setTab }) {
   const wrapRef = useRef(null)
