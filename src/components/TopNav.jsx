@@ -3,30 +3,38 @@ import React, { useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 
 /**
- * TopNav (showcase)
- * - адаптивный стеклянный навбар с плавными анимациями
- * - активный индикатор вкладки (плашка под кнопкой)
- * - поддержка клавиатуры (←/→ для переключения вкладок)
- * - единый стиль для всего приложения
+ * Боковая панель навигации для EraSound Center
+ * - вертикальный стеклянный бар с иконками
+ * - подсветка активной вкладки
+ * - подсказки при наведении
+ * - клавиатурная навигация (↑/↓)
  */
 
-const TABS = ['Панель','Карта','Контент','Группы','Расписание','Настройки']
+const TABS = [
+  { id: 'Панель', label: 'Панель', Icon: IconDashboard },
+  { id: 'Сеть', label: 'Сеть', Icon: IconNetwork },
+  { id: 'Зонирование', label: 'Зонирование', Icon: IconZones },
+  { id: 'Планировщик', label: 'Планировщик', Icon: IconPlanner },
+  { id: 'Параметры', label: 'Параметры', Icon: IconSettings },
+]
 
 export default function TopNav({ tab, setTab }) {
   const wrapRef = useRef(null)
 
-  // Клавиатура: стрелки ←/→ для переключения вкладок
   useEffect(() => {
     const onKey = (e) => {
       if (!wrapRef.current) return
-      const idx = TABS.indexOf(tab)
-      if (e.key === 'ArrowRight') {
+      const idx = TABS.findIndex(t => t.id === tab)
+      if (idx === -1) return
+      if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setTab(TABS[(idx + 1) % TABS.length])
+        const next = TABS[(idx + 1) % TABS.length]
+        setTab(next.id)
       }
-      if (e.key === 'ArrowLeft') {
+      if (e.key === 'ArrowUp') {
         e.preventDefault()
-        setTab(TABS[(idx - 1 + TABS.length) % TABS.length])
+        const prev = TABS[(idx - 1 + TABS.length) % TABS.length]
+        setTab(prev.id)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -34,60 +42,52 @@ export default function TopNav({ tab, setTab }) {
   }, [tab, setTab])
 
   return (
-    <header className="sticky top-0 z-20 bg-neutral-950/70 backdrop-blur-md border-b border-white/10">
-      <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-        {/* Логотип/бренд */}
-        <div className="flex items-center gap-3 select-none">
-          <div className="w-9 h-9 rounded-2xl bg-white/10 grid place-items-center shadow-glass">
-            <div className="w-4 h-4 rounded-md bg-white/70" />
+    <aside className="flex flex-col w-16 sm:w-20 xl:w-24 shrink-0 border-r border-white/10 bg-neutral-950/80 backdrop-blur-lg text-white">
+      <div className="flex h-full flex-col items-center gap-8 py-6">
+        <div className="select-none text-center">
+          <div className="mx-auto mb-2 h-11 w-11 rounded-2xl bg-white/10 grid place-items-center shadow-glass">
+            <div className="h-5 w-5 rounded-xl bg-white/80" />
           </div>
-          <div className="leading-tight">
-            <div className="font-semibold tracking-wide">SoundKeeper</div>
-            <div className="text-xs text-white/50">Network Audio Control</div>
-          </div>
+          <div className="text-xs uppercase tracking-[0.2em] text-white/40">Era</div>
         </div>
 
-        {/* Навигация */}
         <nav
           ref={wrapRef}
-          className="relative rounded-2xl border border-white/10 bg-white/5 p-1 shadow-glass overflow-hidden"
+          className="relative flex flex-1 flex-col items-center gap-2"
           role="tablist"
         >
-          <ul className="flex items-center gap-1">
-            {/* Подсветка активной вкладки (плавающая плашка) */}
-            <motion.div
-              key={`active-${tab}`}
-              layoutId="nav-active"
-              className="absolute top-1 bottom-1 rounded-xl bg-white/10"
-              initial={false}
-              transition={{ type: 'spring', stiffness: 420, damping: 40 }}
-              style={{
-                // позиция вычисляется через offset активной кнопки
-                // будем обновлять через эффект ниже
-              }}
-            />
+          <motion.span
+            key={`active-${tab}`}
+            layoutId="nav-active"
+            className="absolute left-1 right-1 rounded-2xl bg-white/10"
+            initial={false}
+            transition={{ type: 'spring', stiffness: 420, damping: 40 }}
+            style={{
+              top: 'var(--active-top, 0px)',
+              height: 'var(--active-height, 0px)'
+            }}
+          />
+          <ul className="flex flex-1 flex-col items-center gap-2">
             {TABS.map((t) => (
               <NavButton
-                key={t}
-                active={tab === t}
-                onClick={() => setTab(t)}
-                label={t}
-              />
+                key={t.id}
+                active={tab === t.id}
+                onClick={() => setTab(t.id)}
+                label={t.label}
+              >
+                <t.Icon className="h-5 w-5" aria-hidden="true" />
+              </NavButton>
             ))}
           </ul>
         </nav>
       </div>
-      {/* Небольшая тень под шапкой для отделения контента при скролле */}
-      <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-    </header>
+    </aside>
   )
 }
 
-/** Отдельная кнопка вкладки с измерением позиции для плавающей плашки */
-function NavButton({ label, active, onClick }) {
+function NavButton({ label, active, onClick, children }) {
   const ref = useRef(null)
 
-  // Храним позицию кнопки в data-атрибутах родителя, чтобы TopNav мог их считать
   useEffect(() => {
     const el = ref.current
     const parent = el?.parentElement?.parentElement // <nav> wrapper
@@ -96,9 +96,8 @@ function NavButton({ label, active, onClick }) {
       const r = el.getBoundingClientRect()
       const p = parent.getBoundingClientRect()
       if (active) {
-        // пишем CSS-переменные для активной плашки
-        parent.style.setProperty('--active-left', `${r.left - p.left}px`)
-        parent.style.setProperty('--active-width', `${r.width}px`)
+        parent.style.setProperty('--active-top', `${r.top - p.top}px`)
+        parent.style.setProperty('--active-height', `${r.height}px`)
       }
     }
     update()
@@ -113,29 +112,61 @@ function NavButton({ label, active, onClick }) {
         role="tab"
         aria-selected={active}
         onClick={onClick}
-        className={`relative z-10 px-3 sm:px-4 py-2 rounded-xl transition-colors
-          ${active ? 'text-white' : 'text-white/70 hover:text-white'}
-        `}
+        className={`group relative z-10 flex h-12 w-12 items-center justify-center rounded-2xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 ${active ? 'text-white' : 'text-white/60 hover:text-white'}`}
+        title={label}
       >
-        <span className="text-sm sm:text-[0.95rem] font-medium tracking-wide">
+        {children}
+        <span className="pointer-events-none absolute left-full ml-3 whitespace-nowrap rounded-lg bg-neutral-900/90 px-3 py-1 text-xs text-white/80 opacity-0 shadow-lg backdrop-blur transition-opacity duration-200 group-hover:opacity-100">
           {label}
         </span>
-        {/* Микро-индикатор активной вкладки под текстом (полоса) */}
-        <motion.span
-          layoutId={`underline-${label}`}
-          className={`block mt-0.5 h-0.5 rounded-full ${active ? 'bg-white/70' : 'bg-transparent'}`}
-          initial={false}
-          transition={{ type: 'spring', stiffness: 500, damping: 40 }}
-        />
       </button>
-
-      {/* inline-стили для плавающей плашки — читаются TopNav через CSS vars */}
-      <style>{`
-        nav > ul > div[layoutid="nav-active"] {
-          left: var(--active-left, 0px);
-          width: var(--active-width, 0px);
-        }
-      `}</style>
     </li>
   )
 }
+
+const IconDashboard = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M4 13h7V4H4z" />
+    <path d="M13 20h7v-9h-7z" />
+    <path d="M4 20h7v-5H4z" />
+    <path d="M13 4v5h7V4z" />
+  </svg>
+)
+
+const IconNetwork = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M6 18h12" />
+    <path d="M12 18v-6" />
+    <circle cx="12" cy="7" r="3" />
+    <path d="M5 12h2" />
+    <path d="M17 12h2" />
+  </svg>
+)
+
+const IconZones = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <rect x="3.5" y="3.5" width="7" height="7" rx="2" />
+    <rect x="13.5" y="3.5" width="7" height="7" rx="2" />
+    <rect x="3.5" y="13.5" width="7" height="7" rx="2" />
+    <path d="M16 16h4" />
+    <path d="M16 20h4" />
+  </svg>
+)
+
+const IconPlanner = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <rect x="4" y="4.5" width="16" height="16" rx="3" />
+    <path d="M8 2v4" />
+    <path d="M16 2v4" />
+    <path d="M4 10h16" />
+    <path d="M12 14h4" />
+    <path d="M8 18h4" />
+  </svg>
+)
+
+const IconSettings = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" />
+    <path d="M19.4 13.5a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+)
