@@ -9,13 +9,15 @@ import Settings from './pages/Settings'
 export default function App(){
   const [tab, setTab] = useState('Обзор')
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-neutral-950 text-white flex">
       <TopNav tab={tab} setTab={setTab} />
-      {tab==='Панель' && <Dashboard />}
-      {tab==='Сеть' && <Map />}
-      {tab==='Зонирование' && <Groups />}
-      {tab==='Планировщик' && <Schedule />}
-      {tab==='Параметры' && <Settings />}
+      <main className="flex-1 overflow-x-hidden">
+        {tab==='Панель' && <Dashboard />}
+        {tab==='Сеть' && <Map />}
+        {tab==='Зонирование' && <Groups />}
+        {tab==='Планировщик' && <Schedule />}
+        {tab==='Параметры' && <Settings />}
+      </main>
     </div>
   )
 }
