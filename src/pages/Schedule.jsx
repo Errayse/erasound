@@ -1232,6 +1232,18 @@ function ZoneCard({
   const announcements = Array.isArray(z.announcements) ? z.announcements : []
   const [over, setOver] = useState(false)
 
+  const deviceCount = selectedDevices.length
+  const playlistCount = assigned.length
+  const windowCount = playbackWindows.length
+  const activeWindowCount = playbackWindows.filter(win => win.enabled).length
+  const announcementCount = announcements.length
+  const activeAnnouncements = announcements.filter(item => item.enabled).length
+
+  const primaryAnnouncement = announcements.find(item => item.enabled) || announcements[0]
+  const nextAnnouncementLabel = primaryAnnouncement
+    ? describeAnnouncement(primaryAnnouncement)
+    : 'Не запланировано'
+
   return (
     <motion.div
       layout
@@ -1240,41 +1252,50 @@ function ZoneCard({
       onDragLeave={()=>setOver(false)}
       onDrop={(e)=>{ e.preventDefault(); setOver(false); onDrop(e) }}
     >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 space-y-1">
-          <div className="font-medium truncate text-base">{z.name}</div>
-          <div className="text-xs text-white/50">{assigned.length} плейлист(а)</div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-2">
+          <div className="text-[11px] uppercase tracking-[0.14em] text-white/40">Зона</div>
+          <div className="text-lg font-semibold truncate">{z.name}</div>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <SummaryStat icon="📡" label="Устройства" value={deviceCount ? `${deviceCount}` : 'Нет'} accent={deviceCount > 0} />
+            <SummaryStat icon="🎛" label="Плейлисты" value={playlistCount ? `${playlistCount}` : 'Не назначены'} accent={playlistCount > 0} />
+            <SummaryStat icon="🕑" label="Окна" value={windowCount ? `${activeWindowCount}/${windowCount}` : 'Нет'} accent={activeWindowCount > 0} />
+            <SummaryStat icon="🔔" label="Включения" value={announcementCount ? `${activeAnnouncements}/${announcementCount}` : 'Нет'} accent={activeAnnouncements > 0} />
+          </div>
         </div>
-        <div className="flex gap-1 shrink-0">
-          <button className="btn" onClick={onRename} aria-label="Переименовать зону">✎</button>
-          <button className="btn" onClick={onDelete} aria-label="Удалить зону">🗑</button>
+        <div className="flex gap-1 self-start">
+          <IconButton onClick={onRename} label="Переименовать зону" icon="✎" />
+          <IconButton onClick={onDelete} label="Удалить зону" icon="🗑" />
         </div>
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs uppercase tracking-wide text-white/50">Устройства</span>
-          {selectedDevices.length > 0 && (
-            <span className="text-[11px] text-white/40">{selectedDevices.length} выбрано</span>
-          )}
+        <div className="flex items-center justify-between text-xs text-white/50">
+          <span className="uppercase tracking-wide">Устройства</span>
+          {deviceCount > 0 && <span className="text-white/40">{deviceCount} выбрано</span>}
         </div>
         <div className="flex flex-wrap gap-2">
-          {selectedDevices.map(dev => (
-            <span key={dev.ip} className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-sm">
-              <span className="truncate max-w-[8rem] sm:max-w-[10rem]">{dev.name || dev.ip}</span>
+          {selectedDevices.slice(0, 3).map(dev => (
+            <span key={dev.ip} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-white/80">
+              <span className="truncate max-w-[7rem] sm:max-w-[9rem]">{dev.name || dev.ip}</span>
               <button
                 type="button"
-                className="text-xs text-white/60 hover:text-white"
+                className="text-xs text-white/50 hover:text-white"
                 onClick={()=>onRemoveDevice(dev.ip)}
                 aria-label={`Убрать устройство ${dev.name || dev.ip}`}
               >×</button>
             </span>
           ))}
+          {deviceCount > 3 && (
+            <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/50">
+              + ещё {deviceCount - 3}
+            </span>
+          )}
           <DevicePicker available={availableDevices} onSelect={(ip)=>onToggleDevice(ip)} />
         </div>
-        {selectedDevices.length === 0 && (
+        {deviceCount === 0 && (
           <div className="text-sm text-white/60 bg-white/5 border border-white/10 rounded-md px-3 py-2">
-            Нет выбранных устройств. Добавьте одно или несколько, чтобы выгружать плейлисты в зону.
+            Добавьте хотя бы одно устройство, чтобы запустить трансляцию в зоне.
           </div>
         )}
       </div>
@@ -1282,59 +1303,33 @@ function ZoneCard({
       <div className={`p-3 border rounded-md transition-colors ${over ? 'border-white/30 bg-white/5' : 'border-white/10 bg-transparent'}`}>
         <div className="flex items-center justify-between gap-2">
           <div className="text-xs uppercase tracking-wide text-white/50">Плейлисты зоны</div>
-          <div className="text-[11px] text-white/40">Перетащите карточку плейлиста сюда</div>
+          <div className="text-[11px] text-white/40">Перетащите карточку сюда</div>
         </div>
-        <div className="mt-2 grid gap-2">
+        <div className="mt-3 space-y-2">
           {assigned.length === 0 && (
-            <div className="text-white/60 text-sm border border-dashed border-white/15 rounded-md px-3 py-6 text-center">
-              Перетащите плейлист из списка справа или создайте новый ниже.
+            <div className="text-white/60 text-sm border border-dashed border-white/15 rounded-md px-3 py-5 text-center">
+              Пока не назначено ни одного плейлиста — перетащите карточку из списка справа.
             </div>
           )}
           {assigned.map(pl => {
             const totalTracks = pl.tracks.length
+            const transferSnapshot = summarizeTransfers({
+              zoneId: z.id,
+              playlistId: pl.id,
+              devices: selectedDevices,
+              transfers,
+            })
             return (
-              <div key={pl.id} className="bg-white/5 border border-white/10 rounded-md px-3 py-3 space-y-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className="w-2 h-2 rounded-full bg-sky-300/70 mt-1" />
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <div className="truncate font-medium">{pl.name}</div>
-                      <div className="text-xs text-white/50">{totalTracks} трек(ов)</div>
-                    </div>
+              <div key={pl.id} className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-2.5 h-2.5 rounded-full bg-sky-300/70 mt-1.5" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium text-sm">{pl.name}</div>
+                    <div className="text-xs text-white/50">{totalTracks} трек(ов)</div>
                   </div>
-                  <button className="btn" onClick={()=>onUnassign(pl.id)}>Убрать</button>
+                  <IconButton onClick={()=>onUnassign(pl.id)} label="Убрать плейлист" icon="×" />
                 </div>
-
-                {selectedDevices.length > 0 ? (
-                  <div className="space-y-2">
-                    {selectedDevices.map(dev => {
-                      const key = transferKey(z.id, pl.id, dev.ip)
-                      const entry = transfers[key]
-                      const status = entry?.status || 'pending'
-                      const progress = entry?.progress ?? 0
-                      return (
-                        <div key={dev.ip} className="space-y-1">
-                          <div className="flex justify-between text-xs text-white/60">
-                            <span className="truncate">{dev.name || dev.ip}</span>
-                            <span className="text-white/70">{status==='success' ? 'Готово' : `${Math.round(progress)}%`}</span>
-                          </div>
-                          <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-                            <motion.div
-                              className={`h-full ${status==='success' ? 'bg-emerald-400/80' : 'bg-sky-400/80'}`}
-                              initial={{ width: 0 }}
-                              animate={{ width: `${Math.max(progress, status==='success'?100:progress)}%` }}
-                              transition={{ duration: 0.4 }}
-                            />
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-xs text-white/60">
-                    Добавьте устройство выше, чтобы начать передачу плейлиста.
-                  </div>
-                )}
+                <TransferSummary snapshot={transferSnapshot} />
               </div>
             )
           })}
@@ -1342,83 +1337,170 @@ function ZoneCard({
       </div>
 
       <div className="space-y-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <div className="text-xs uppercase tracking-wide text-white/50">Расписание активности</div>
-            <div className="text-sm text-white/60">Включайте и выключайте зону по заданным интервалам.</div>
-          </div>
-          <button className="btn glass" onClick={onAddWindow}>+ Окно</button>
-        </div>
-        <div className="space-y-2">
+        <SectionRow
+          title="Расписание активности"
+          subtitle="Контролируйте, когда зона включена"
+          actionLabel="Окно"
+          onAction={onAddWindow}
+        />
+        <div className="grid gap-2 sm:grid-cols-2">
           {playbackWindows.map(window => (
-            <div key={window.id} className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0 space-y-1">
-                  <div className="font-medium truncate">{window.label}</div>
-                  <div className="text-xs text-white/60">{formatDaysForDisplay(window.days)}</div>
+            <div key={window.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-medium truncate text-sm">{window.label}</div>
+                  <div className="text-xs text-white/50">{formatDaysForDisplay(window.days)}</div>
                 </div>
-                <div className="flex items-center gap-2 self-start">
-                  <ToggleChip active={window.enabled} onClick={()=>onToggleWindow(window.id)} />
-                  <button className="btn glass" onClick={()=>onEditWindow(window)} aria-label="Редактировать окно">✎</button>
-                  <button className="btn glass" onClick={()=>onDeleteWindow(window)} aria-label="Удалить окно">🗑</button>
-                </div>
+                <ToggleChip active={window.enabled} onClick={()=>onToggleWindow(window.id)} />
               </div>
-              <div className="flex flex-wrap items-center gap-2 text-sm text-white/70">
-                <span className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/10 px-3 py-1">
-                  <span className="font-medium tracking-wide">{window.start}</span>
-                  <span className="text-xs text-white/50">до</span>
-                  <span className="font-medium tracking-wide">{window.end}</span>
+              <div className="mt-3 flex items-center gap-2 text-xs text-white/60">
+                <span className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/10 px-3 py-1 font-mono text-[13px] text-white/70">
+                  {window.start}
+                  <span className="text-white/30">→</span>
+                  {window.end}
                 </span>
-                <span className="text-xs text-white/50">{window.enabled ? 'Активно в указанные промежутки' : 'Временно отключено'}</span>
+                <div className="ml-auto flex gap-1">
+                  <IconButton onClick={()=>onEditWindow(window)} label="Редактировать окно" icon="✎" />
+                  <IconButton onClick={()=>onDeleteWindow(window)} label="Удалить окно" icon="🗑" />
+                </div>
               </div>
             </div>
           ))}
           {playbackWindows.length === 0 && (
             <div className="rounded-lg border border-dashed border-white/15 bg-transparent px-3 py-5 text-center text-sm text-white/60">
-              Пока нет временных окон. Добавьте, чтобы ограничить работу зоны по времени.
+              Пока нет временных окон.
             </div>
           )}
         </div>
       </div>
 
       <div className="space-y-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <div className="text-xs uppercase tracking-wide text-white/50">Точечные включения</div>
-            <div className="text-sm text-white/60">Запускайте объявления и спец-треки по расписанию.</div>
-          </div>
-          <button className="btn glass" onClick={onAddAnnouncement}>+ Включение</button>
-        </div>
-        <div className="space-y-2">
+        <SectionRow
+          title="Точечные включения"
+          subtitle={nextAnnouncementLabel}
+          actionLabel="Включение"
+          onAction={onAddAnnouncement}
+        />
+        <div className="grid gap-2 sm:grid-cols-2">
           {announcements.map(entry => (
-            <div key={entry.id} className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0 space-y-1">
-                  <div className="font-medium truncate">{entry.title}</div>
-                  <div className="text-xs text-white/60 truncate">{resolveAnnouncementTrackLabel(entry, lists)}</div>
+            <div key={entry.id} className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-medium truncate text-sm">{entry.title}</div>
+                  <div className="text-xs text-white/50 truncate">{resolveAnnouncementTrackLabel(entry, lists)}</div>
                 </div>
-                <div className="flex items-center gap-2 self-start">
-                  <ToggleChip active={entry.enabled} onClick={()=>onToggleAnnouncement(entry.id)} labelOn="Активно" labelOff="Выкл" />
-                  <button className="btn glass" onClick={()=>onEditAnnouncement(entry)} aria-label="Редактировать включение">✎</button>
-                  <button className="btn glass" onClick={()=>onDeleteAnnouncement(entry)} aria-label="Удалить включение">🗑</button>
-                </div>
+                <ToggleChip active={entry.enabled} onClick={()=>onToggleAnnouncement(entry.id)} labelOn="On" labelOff="Off" />
               </div>
-              <div className="flex flex-wrap gap-2 text-xs text-white/60">
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
                 <ScheduleBadge>{describeAnnouncement(entry)}</ScheduleBadge>
                 {entry.repeat === 'weekly' && entry.days?.length > 0 && (
                   <ScheduleBadge>{formatDaysForDisplay(entry.days)}</ScheduleBadge>
                 )}
+                <div className="ml-auto flex gap-1 text-sm">
+                  <IconButton onClick={()=>onEditAnnouncement(entry)} label="Редактировать включение" icon="✎" />
+                  <IconButton onClick={()=>onDeleteAnnouncement(entry)} label="Удалить включение" icon="🗑" />
+                </div>
               </div>
             </div>
           ))}
           {announcements.length === 0 && (
             <div className="rounded-lg border border-dashed border-white/15 bg-transparent px-3 py-5 text-center text-sm text-white/60">
-              Добавьте точечные включения, чтобы запускать объявления, джинглы и напоминания по графику.
+              Добавьте запланированные включения, чтобы запускать объявления и джинглы.
             </div>
           )}
         </div>
       </div>
     </motion.div>
+  )
+}
+
+
+function SectionRow({ title, subtitle, actionLabel, onAction }){
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="space-y-0.5">
+        <div className="text-xs uppercase tracking-wide text-white/50">{title}</div>
+        {subtitle && <div className="text-xs text-white/40">{subtitle}</div>}
+      </div>
+      <button className="btn glass" onClick={onAction}>+ {actionLabel}</button>
+    </div>
+  )
+}
+
+function IconButton({ onClick, label, icon }){
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="btn glass h-9 w-9 shrink-0 flex items-center justify-center text-base"
+      title={label}
+    >
+      {icon}
+    </button>
+  )
+}
+
+function SummaryStat({ icon, label, value, accent }){
+  return (
+    <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition-colors ${accent ? 'border-emerald-400/60 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-white/5 text-white/60'}`}>
+      <span aria-hidden="true">{icon}</span>
+      <span className="font-medium text-white/70">{value}</span>
+      <span className="text-white/40">{label}</span>
+    </div>
+  )
+}
+
+function summarizeTransfers({ zoneId, playlistId, devices, transfers }){
+  if (!devices.length) {
+    return { state: 'idle', progress: 0, total: 0, completed: 0 }
+  }
+  let progress = 0
+  let completed = 0
+  devices.forEach(dev => {
+    const key = transferKey(zoneId, playlistId, dev.ip)
+    const entry = transfers[key]
+    if (entry?.status === 'success') {
+      completed += 1
+      progress += 100
+    } else {
+      const val = entry?.progress ?? 0
+      progress += Math.max(0, Math.min(100, val))
+    }
+  })
+  const avg = progress / devices.length
+  if (completed === devices.length) {
+    return { state: 'success', progress: 100, total: devices.length, completed }
+  }
+  return { state: 'progress', progress: Math.round(avg), total: devices.length, completed }
+}
+
+function TransferSummary({ snapshot }){
+  if (snapshot.total === 0) {
+    return (
+      <div className="text-xs text-white/50">
+        Добавьте устройство выше, чтобы выгрузить плейлист.
+      </div>
+    )
+  }
+
+  const barClass = snapshot.state === 'success' ? 'bg-emerald-400/80' : 'bg-sky-400/80'
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-xs text-white/60">
+        <span>{snapshot.completed}/{snapshot.total} устройств</span>
+        <span className="text-white/70">{snapshot.state === 'success' ? 'Готово' : `${snapshot.progress}%`}</span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+        <motion.div
+          className={`h-full ${barClass}`}
+          initial={{ width: 0 }}
+          animate={{ width: `${snapshot.progress}%` }}
+          transition={{ duration: 0.4 }}
+        />
+      </div>
+    </div>
   )
 }
 
