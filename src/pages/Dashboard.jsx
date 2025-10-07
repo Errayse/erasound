@@ -4,7 +4,7 @@ import ZoneCard from '../components/ZoneCard'
 import Modal from '../components/Modal'
 import deviceIllustration from '../assets/era-device.svg'
 
-const fallbackDevices = [
+const dashboardFallbackDevices = [
   {
     ip: '192.168.0.21',
     name: 'Холл · Ресивер',
@@ -72,113 +72,7 @@ const fallbackDevices = [
 function normalizeDevices(list){
   if (!Array.isArray(list) || list.length === 0) return []
   return list.map((item, index) => {
-    const template = fallbackDevices[index % fallbackDevices.length]
-    const base = {
-      ...template,
-      ...item,
-    }
-    const fromResponse = item?.nowPlaying || item?.playback || null
-    const trackName = item?.track || item?.nowPlaying?.track || item?.currentTrack
-    const playlistName = item?.playlist || item?.nowPlaying?.playlist || template.nowPlaying?.playlist
-    const progress = item?.progress != null ? item.progress : item?.nowPlaying?.progress
-    base.online = item?.online != null ? !!item.online : template.online
-    base.speed = item?.speed ?? item?.bandwidth ?? template.speed
-    base.latency = item?.latency ?? template.latency
-    base.zone = item?.zone || item?.room || template.zone
-    base.volume = item?.volume != null ? item.volume : template.volume
-    base.uptime = item?.uptime || template.uptime
-    base.nowPlaying = fromResponse || (trackName ? {
-      track: trackName,
-      artist: item?.artist || template.nowPlaying?.artist || '—',
-      playlist: playlistName,
-      progress: typeof progress === 'number' ? progress : template.nowPlaying?.progress || 0,
-      length: item?.length || template.nowPlaying?.length || 240,
-    } : template.nowPlaying)
-    return base
-  })
-}
-
-function summarizeDevices(devices){
-  const total = devices.length
-  const onlineDevices = devices.filter(d => d.online)
-  const online = onlineDevices.length
-  const offline = total - online
-  const avgSpeed = online ? Math.round(onlineDevices.reduce((acc, d) => acc + (d.speed || 0), 0) / online) : 0
-  const latencyDevices = onlineDevices.filter(d => d.latency != null)
-  const avgLatency = latencyDevices.length ? Math.round(latencyDevices.reduce((acc, d) => acc + d.latency, 0) / latencyDevices.length) : 0
-  const activeStreams = onlineDevices.filter(d => !!d.nowPlaying).length
-  return { total, online, offline, avgSpeed, avgLatency, activeStreams }
-}
-
-const fallbackDevices = [
-  {
-    ip: '192.168.0.21',
-    name: 'Холл · Ресивер',
-    zone: 'Холл',
-    online: true,
-    volume: 68,
-    speed: 95,
-    latency: 12,
-    uptime: '4 ч 12 мин',
-    nowPlaying: {
-      track: 'Morning Intro',
-      artist: 'EraSound Studio',
-      playlist: 'Утренний эфир',
-      progress: 0.42,
-      length: 210,
-    },
-  },
-  {
-    ip: '192.168.0.37',
-    name: 'Кафе · Колонки',
-    zone: 'Кафе',
-    online: true,
-    volume: 52,
-    speed: 82,
-    latency: 18,
-    uptime: '2 ч 05 мин',
-    nowPlaying: {
-      track: 'Coffee Lounge',
-      artist: 'LoFi Beats',
-      playlist: 'Дневное настроение',
-      progress: 0.63,
-      length: 254,
-    },
-  },
-  {
-    ip: '192.168.0.52',
-    name: 'Терраса · Усилитель',
-    zone: 'Терраса',
-    online: true,
-    volume: 74,
-    speed: 76,
-    latency: 22,
-    uptime: '56 мин',
-    nowPlaying: {
-      track: 'Sunset Chill',
-      artist: 'Skyline Trio',
-      playlist: 'Вечерняя витрина',
-      progress: 0.18,
-      length: 298,
-    },
-  },
-  {
-    ip: '192.168.0.88',
-    name: 'Склад · Шлюз',
-    zone: 'Склад',
-    online: false,
-    volume: 0,
-    speed: 0,
-    latency: null,
-    uptime: '—',
-    nowPlaying: null,
-  },
-]
-
-function normalizeDevices(list){
-  if (!Array.isArray(list) || list.length === 0) return []
-  return list.map((item, index) => {
-    const template = fallbackDevices[index % fallbackDevices.length]
+    const template = dashboardFallbackDevices[index % dashboardFallbackDevices.length]
     const base = {
       ...template,
       ...item,
@@ -217,9 +111,9 @@ function summarizeDevices(devices){
 }
 
 export default function Dashboard(){
-  const [items, setItems] = useState(fallbackDevices)
+  const [items, setItems] = useState(dashboardFallbackDevices)
   const [active, setActive] = useState(null)
-  const [stats, setStats] = useState(()=>summarizeDevices(fallbackDevices))
+  const [stats, setStats] = useState(()=>summarizeDevices(dashboardFallbackDevices))
 
   const nowPlayingDevice = useMemo(() => items.find(d => d.online && d.nowPlaying), [items])
 
@@ -235,8 +129,8 @@ export default function Dashboard(){
     } catch {
       // silent fallback
     }
-    setItems(fallbackDevices)
-    setStats(summarizeDevices(fallbackDevices))
+    setItems(dashboardFallbackDevices)
+    setStats(summarizeDevices(dashboardFallbackDevices))
   }
   useEffect(()=>{ refresh() }, [])
 
