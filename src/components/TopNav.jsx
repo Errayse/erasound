@@ -12,8 +12,8 @@ import { motion } from 'framer-motion'
 
 const TABS = [
   { id: 'Панель', label: 'Панель', Icon: IconDashboard },
-  { id: 'Сеть', label: 'Сеть', Icon: IconNetwork },
-  { id: 'Зонирование', label: 'Зонирование', Icon: IconZones },
+  { id: 'Карта', label: 'Карта', Icon: IconMap },
+  { id: 'Устройства', label: 'Устройства', Icon: IconDevices },
   { id: 'Планировщик', label: 'Планировщик', Icon: IconPlanner },
   { id: 'Параметры', label: 'Параметры', Icon: IconSettings },
 ]
@@ -135,26 +135,25 @@ function IconDashboard(props) {
   )
 }
 
-function IconNetwork(props) {
+function IconMap(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <path d="M6 18h12" />
-      <path d="M12 18v-6" />
-      <circle cx="12" cy="7" r="3" />
-      <path d="M5 12h2" />
-      <path d="M17 12h2" />
+      <path d="M9 3 3 5.5v15l6-2.5 6 2.5 6-2.5v-15l-6 2.5z" />
+      <path d="M9 3v15" />
+      <path d="M15 5.5v15" />
     </svg>
   )
 }
 
-function IconZones(props) {
+function IconDevices(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <rect x="3.5" y="3.5" width="7" height="7" rx="2" />
-      <rect x="13.5" y="3.5" width="7" height="7" rx="2" />
-      <rect x="3.5" y="13.5" width="7" height="7" rx="2" />
-      <path d="M16 16h4" />
-      <path d="M16 20h4" />
+      <rect x="3" y="4" width="7" height="12" rx="2" />
+      <rect x="14" y="8" width="7" height="12" rx="2" />
+      <path d="M6.5 18v2" />
+      <path d="M17.5 20v1" />
+      <path d="M14 12h7" />
+      <path d="M3 10h7" />
     </svg>
   )
 }
